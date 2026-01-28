@@ -1,0 +1,204 @@
+{
+    "humans": {
+        "Mike": {
+            "hunger": 0,
+            "state": "Okay",
+            "task": "",
+            "item": "",
+            "queue": {
+                "1": {
+                    "task": "",
+                    "item": ""
+                },
+                "2": {
+                    "task": "",
+                    "item": ""
+                },
+                "3": {
+                    "task": "",
+                    "item": ""
+                }
+            }
+        },
+        "Alex": {
+            "hunger": 0,
+            "state": "Okay",
+            "task": "",
+            "item": "",
+            "queue": {
+                "1": {
+                    "task": "",
+                    "item": ""
+                },
+                "2": {
+                    "task": "",
+                    "item": ""
+                },
+                "3": {
+                    "task": "",
+                    "item": ""
+                }
+            }
+        },
+        "Carrie": {
+            "hunger": 0,
+            "state": "Okay",
+            "task": "",
+            "item": "",
+            "queue": {
+                "1": {
+                    "task": "",
+                    "item": ""
+                },
+                "2": {
+                    "task": "",
+                    "item": ""
+                },
+                "3": {
+                    "task": "",
+                    "item": ""
+                }
+            }
+        },
+        "Karla": {
+            "hunger": 0,
+            "state": "Okay",
+            "task": "",
+            "item": "",
+            "queue": {
+                "1": {
+                    "task": "",
+                    "item": ""
+                },
+                "2": {
+                    "task": "",
+                    "item": ""
+                },
+                "3": {
+                    "task": "",
+                    "item": ""
+                }
+            }
+        }
+    },
+    "droids": {
+        "Rin": {
+            "charge": 0,
+            "AncientCode": false,
+            "task": "",
+            "item": "",
+            "queue": {
+                "1": {
+                    "task": "",
+                    "item": ""
+                },
+                "2": {
+                    "task": "",
+                    "item": ""
+                },
+                "3": {
+                    "task": "",
+                    "item": ""
+                }
+            }
+        },
+        "Hariet": {
+            "charge": 0,
+            "AncientCode": false,
+            "task": "",
+            "item": "",
+            "queue": {
+                "1": {
+                    "task": "",
+                    "item": ""
+                },
+                "2": {
+                    "task": "",
+                    "item": ""
+                },
+                "3": {
+                    "task": "",
+                    "item": ""
+                }
+            }
+        },
+        "Terry": {
+            "charge": 0,
+            "AncientCode": false,
+            "task": "",
+            "item": "",
+            "queue": {
+                "1": {
+                    "task": "",
+                    "item": ""
+                },
+                "2": {
+                    "task": "",
+                    "item": ""
+                },
+                "3": {
+                    "task": "",
+                    "item": ""
+                }
+            }
+        },
+        "Niobe": {
+            "charge": 0,
+            "AncientCode": false,
+            "task": "",
+            "item": "",
+            "queue": {
+                "1": {
+                    "task": "",
+                    "item": ""
+                },
+                "2": {
+                    "task": "",
+                    "item": ""
+                },
+                "3": {
+                    "task": "",
+                    "item": ""
+                }
+            }
+        }
+    },
+    "resources": [],
+    "tasks": {},
+    "task_number": 0,
+    "crops": {},
+    "crop_number": 0,
+    "turns_elapsed": 0,
+    "explore_count": 0,
+    "found_nothing_count": 0,
+    "gamestate": {
+        "assign": false,
+        "charge": true,
+        "examine": true,
+        "explore": true,
+        "feed": true,
+        "mine": false,
+        "plant": false,
+        "reap": false,
+        "refuel": false,
+        "repair": false,
+        "list": true,
+        "manage": true,
+        "help": true,
+        "next": true,
+        "read": true,
+        "reset": true,
+        "status": true,
+        "quit": true,
+        "game_over": false,
+        "endgame_reason": "null"
+    },
+    "shieldstate": {
+        "shield_found": false,
+        "manual_decoded": false,
+        "ancient_droid_valid": false,
+        "crystal_combo_valid": false,
+        "shield_connected": false,
+        "shield_active": false
+    }
+}
