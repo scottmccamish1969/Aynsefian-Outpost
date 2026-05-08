@@ -1,18 +1,26 @@
 # planting.py
 
 import random
-from constants import SERVING_VALUE, HYDROPONICS_BED_MIN, HYDROPONICS_BED_MAX, SEED_PACKETS_USED, TASK_PLANTING
+from constants import SERVING_VALUE, HYDROPONICS_BED_MIN, HYDROPONICS_BED_MAX, SEED_PACKETS_USED, TASK_PLANTING, FOOD_PER_DAY, NUM_HUMANS
 from lore.lore_ingame import get_message
-from lore.user_interface import get_input, log_and_display
-from utils import process_hunger_status, can_character_act
+from lore.user_interface import get_input, msg_plant, msg_food
+from status import display_character_summary
+from utils import process_hunger_status, can_character_act, get_pronouns
 
 
 def feed_human(name, task_package):
     humans = task_package["humans"]
     resources = task_package["resources"]
+    turns_elapsed = task_package["counters"]["turns"]
     return_msg = ""
     food_store = next((r for r in resources if r["name"] == "FoodStore"), None)
+    is_human = name in humans
+    pronouns = get_pronouns(name, is_human)
 
+    # Check days of food left
+    how_much_food = days_of_food_left(resources)
+
+    # Open the food store
     if not food_store:
         return_msg = get_message("feed", "no_foodstore")
         return return_msg, task_package
@@ -43,7 +51,7 @@ def feed_human(name, task_package):
         served.update({"cabbage": 4*SERVING_VALUE["cabbage"]})
     elif available["rationPack"] >= 1:
         food_store["rationPack"] -= 1
-        return_msg = get_message("feed", "fed_ration", person_name=name)
+        return_msg = get_message("feed", "fed_ration", person_name=name, pronoun1=pronouns["p1"], pronoun2=pronouns["p1"].lower())
         humans[name]["hunger"] = max(0, humans[name]["hunger"] - 10)
         task_package = process_hunger_status(name, task_package)
         return return_msg, task_package
@@ -83,6 +91,11 @@ def feed_human(name, task_package):
     return_msg = message
 
     humans[name]["hunger"] = max(0, humans[name]["hunger"] - 10)
+
+    # Again check days of food left and warn if below two days' worth
+    how_much_food_now = days_of_food_left(resources)
+    if how_much_food_now < 2 and how_much_food >= 2:
+        msg_food(get_message("feed", "low_food_warning"), turns_elapsed, num_humans=NUM_HUMANS, tone="warn")
     
     task_package = process_hunger_status(name, task_package)
     return return_msg, task_package
@@ -95,7 +108,7 @@ def update_food_amount(resources, food_type, amount, turns_elapsed, allow_negati
     
     food_store = next((r for r in resources if r["name"] == "FoodStore"), None)
     if not food_store:
-        log_and_display(get_message("error", "no_food_store"), turns_elapsed)
+        msg_plant(get_message("error", "no_food_store"), turns_elapsed, tone="error")
 
     if food_type not in food_store:
         food_store[food_type] = 0
@@ -115,6 +128,19 @@ def get_food_amount(resources, food_type):
         return 0
 
     return food_store.get(food_type, 0)
+
+
+def days_of_food_left(resources):
+    days_left = 0
+
+    ration = get_food_amount(resources, "rationPack")
+    apple = get_food_amount(resources, "apple")
+    cabbage = get_food_amount(resources, "cabbage")
+    potato = get_food_amount(resources, "potato")
+
+    days_left = (ration + apple/FOOD_PER_DAY["apple"] + cabbage/FOOD_PER_DAY["cabbage"] + potato/FOOD_PER_DAY["potato"])/NUM_HUMANS
+
+    return days_left
 
 
 def update_multiple_foods(resources, allow_negative=False, **kwargs):
@@ -205,7 +231,7 @@ def update_crop_growth(task_package):
     #Announces crops that have matured.
     crops = task_package["crops"]
     resources = task_package["resources"]
-    turns_elapsed = task_package["turns_elapsed"]
+    turns_elapsed = task_package["counters"]["turns"]
 
     hydro = next((r for r in resources if r.get("name") == "HydroponicsRoom"), None)
     if not hydro:
@@ -228,7 +254,7 @@ def update_crop_growth(task_package):
 
             # Narrative message
             bed = crop["bed_id"]["id"]
-            log_and_display(get_message("plant", "crop_matured", planter=crop.get("worker", "Someone"), 
+            msg_plant(get_message("plant", "crop_matured", planter=crop.get("worker", "Someone"), 
                                         crop_type=crop["crop_type"], bed=bed), turns_elapsed)
 
     return task_package
@@ -247,12 +273,13 @@ def get_bed_by_id(hydro, bed_id):
 def determine_what_to_plant_and_where(raw_target, crops, resources, humans, droids, turns_elapsed):
     VALID_CROPS = ["apple", "cabbage", "potato"]
     plant_options = []
+    task_type = TASK_PLANTING
 
     # 1. Get worker name
     if not raw_target:
+        display_character_summary(humans, droids, task_type, turns_elapsed)
         raw_target = get_input("input", "plant", turns_elapsed)
 
-    task_type = TASK_PLANTING
     okay_to_act, is_human, worker_name = can_character_act(raw_target, task_type, humans, droids, turns_elapsed)
     if not okay_to_act:
         return False, None, None, resources
@@ -282,7 +309,7 @@ def determine_what_to_plant_and_where(raw_target, crops, resources, humans, droi
     # Seed stash check
     seeds = next((r for r in resources if r.get("name") == "SeedStash"), None)
     if not seeds:
-        log_and_display(get_message("plant", "no_seedstash"), turns_elapsed)
+        msg_plant(get_message("plant", "no_seedstash"), turns_elapsed, tone="error")
         return False, None, None, resources
 
     seed_msg = f"AVAILABLE SEEDS:  Apple: {seeds.get('apple', 0)}  Cabbage: {seeds.get('cabbage', 0)}  Potato: {seeds.get('potato', 0)}"
@@ -290,7 +317,7 @@ def determine_what_to_plant_and_where(raw_target, crops, resources, humans, droi
     # Hydroponics + free beds
     hydro = next((r for r in resources if r.get("name") == "HydroponicsRoom"), None)
     if not hydro:
-        log_and_display(get_message("plant", "no_hydro"), turns_elapsed)
+        msg_plant(get_message("plant", "no_hydro"), turns_elapsed, tone="error")
         return False, None, None, resources
 
     beds = hydro.get("beds", [])
@@ -298,7 +325,7 @@ def determine_what_to_plant_and_where(raw_target, crops, resources, humans, droi
     free_beds = len(available_beds)
 
     if free_beds == 0:
-        log_and_display(get_message("plant", "no_beds"), turns_elapsed)
+        msg_plant(get_message("plant", "no_beds"), turns_elapsed, tone="warn")
         return False, None, None, resources
 
     free_beds_msg = f"FREE BEDS AVAILABLE FOR PLANTING: {free_beds}"
@@ -307,7 +334,7 @@ def determine_what_to_plant_and_where(raw_target, crops, resources, humans, droi
     full_planting_msg = "\n".join(
         crop_lines + [seeds_per_bed_msg, seed_msg, free_beds_msg] + food_lines
     )
-    log_and_display(full_planting_msg, turns_elapsed)
+    msg_plant(full_planting_msg, turns_elapsed, tone="success")
 
     crops_requested = []
     num_beds_needed = 0
@@ -321,24 +348,24 @@ def determine_what_to_plant_and_where(raw_target, crops, resources, humans, droi
         try:
             num_beds_needed = int(get_input("input", "plant_how_many", turns_elapsed, available=free_beds))
         except ValueError:
-            log_and_display(get_message("plant", "invalid_response", free_beds=free_beds), turns_elapsed)
+            msg_plant(get_message("plant", "invalid_response", free_beds=free_beds), turns_elapsed, tone="error")
             return False, None, None, resources
 
         if num_beds_needed == 0:   # They wish to abort
             return False, None, None, resources
 
         if num_beds_needed < 0 or num_beds_needed > free_beds:
-            log_and_display(get_message("plant", "invalid_response", free_beds=free_beds), turns_elapsed)
+            msg_plant(get_message("plant", "invalid_response", free_beds=free_beds), turns_elapsed, tone="error")
             return False, None, None, resources
 
         crops_requested = get_input("input", "plant_which_crop", turns_elapsed).lower().split()
         if crops_requested == {} or crops_requested == "":
-            log_and_display(get_message("plant", "unknown_crop", crop=crop), turns_elapsed)
+            msg_plant(get_message("plant", "unknown_crop", crop=crop), turns_elapsed, tone="error")
             return False, worker_name, None, resources
         
         for crop in crops_requested:
             if crop == "" or crop not in VALID_CROPS:
-                log_and_display(get_message("plant", "unknown_crop", crop=crop), turns_elapsed)
+                msg_plant(get_message("plant", "unknown_crop", crop=crop), turns_elapsed, tone="error")
                 return False, worker_name, None, resources
 
     # 4. Build planting instructions

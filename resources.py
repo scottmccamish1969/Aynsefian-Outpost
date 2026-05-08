@@ -1,16 +1,16 @@
 # resources.py
 
 import random
-from lore.lore_ingame import get_message
-from lore.user_interface import log_and_display
-from utils import get_task_by_worker, set_shield_state, clear_task_for_character
-from planting import initialise_hydroponics_room
 from constants import (
     RATION_PACKS, MAJOR_RESOURCES_ORDER, CHAIN_RESOURCES_ORDER, GATING_RULES, NORMAL_ITEM_RARITY, GATE_ITEM_RARITY, POST_CRITICAL_ITEM_RARITY,
     IDLE_CHARGE_USAGE, FULL_CHARGE, INITIAL_CHARGE, INITIAL_SEED_STASH, SEED_PACKETS_USED, NUM_DROIDS, LOW_CHARGE_FLAG, 
-    TASK_CHARGING, TASK_ASSIGNED, TASK_PLANTING
+    TASK_CHARGING, TASK_ASSIGNED, TASK_PLANTING, TASK_EXAMINING, POWER_PER_RED, POWER_PER_INDIGO, POWER_PER_GOLD
 )
-from items import REPLACEMENT, CHAIN, NOVELTY, JUNK, TAROT, ITEM_DB, get_item_template
+from items import REPLACEMENT, CHAIN, NOVELTY, JUNK, ITEM_DB, get_item_template
+from lore.lore_ingame import get_message
+from lore.user_interface import get_confirm, msg_power
+from planting import initialise_hydroponics_room
+from utils import get_task_by_worker, set_shield_state, clear_task_for_character, get_integer_input
 
 def get_resource(resources, name):
     for res in resources:
@@ -21,9 +21,11 @@ def get_resource(resources, name):
             return res
     return None
 
+
 def resource_is_discovered(resources, name) -> bool:
     # True if this item name already exists in the discovered resources list.
     return any(r.get("name") == name for r in resources)
+
 
 def add_or_get_discovered_item(resources, name):
     # Ensure that an item with this name exists in the discovered list.
@@ -42,9 +44,11 @@ def add_or_get_discovered_item(resources, name):
     resources.append(template)
     return template, resources
 
+
 def all_major_resources_found(resources) -> bool:
     # True if all major essentials have been discovered.
     return all(resource_is_discovered(resources, name) for name in MAJOR_RESOURCES_ORDER)
+
 
 def update_resource(resource_name, updates, resource_list):
     # Finds a resource in a list of resource dicts by name and updates its fields.
@@ -55,9 +59,11 @@ def update_resource(resource_name, updates, resource_list):
         
     return resource_list
 
+
 def is_resource_found(resources, resource_name):
     res = get_resource(resources, resource_name)
     return bool(res and res.get("found", False))
+
 
 def all_chain_resources_found(resources):
     return all(
@@ -65,10 +71,12 @@ def all_chain_resources_found(resources):
         for name in CHAIN_RESOURCES_ORDER
     )
 
+
 def all_critical_resources_found(current_resources):
     # 'Critical' = all major essentials + all chain resources.
     # When this is True, exploring is pure flavour (Tarot / novelty / junk).
     return all_major_resources_found(current_resources) and all_chain_resources_found(current_resources)
+
 
 def force_next_critical(current_resources):
     #Used when the not-found streak is too long (>= 12) OR we hit a gating rule.
@@ -88,6 +96,7 @@ def force_next_critical(current_resources):
 
     return None
 
+
 def _pick_unfound_item(candidates):
     #Generic helper: from a list of item dicts (Tarot, replacement, etc.),
     #return a random unfound one, or None if none are available.
@@ -95,6 +104,7 @@ def _pick_unfound_item(candidates):
     if not unfound:
         return None
     return random.choice(unfound)
+
 
 def react_to_found_resource(resource_name, resources, droids, gamestate, shieldstate):
     for res in resources:
@@ -184,23 +194,26 @@ def react_to_found_resource(resource_name, resources, droids, gamestate, shields
 # Decide what (if anything) an exploration run discovers.
 def attempt_exploration(task_package, allow_chain_early=True):
     current_resources = task_package["resources"]
-    turns_elapsed = task_package["turns_elapsed"]
-    explore_count = task_package["explore_count"]
-    found_nothing_count = task_package["found_nothing_count"]
+    turns_elapsed = task_package["counters"]["turns"]
+    explore_count = task_package["counters"]["explore"]
+    found_nothing_count = task_package["counters"]["found_nil"]
     day = turns_elapsed // 10
 
     # Every call increments the explore counter
     explore_count += 1
+    task_package["counters"]["explore"] = explore_count
 
     # ---------------------------------------------------
     # 1) Scripted early finds: FoodStore and PowerSupply
     # ---------------------------------------------------
     if not resource_is_discovered(current_resources, "FoodStore"):
         found_nothing_count = 0
+        task_package["counters"]["found_nil"] = found_nothing_count
         return "FoodStore", task_package
 
     if not resource_is_discovered(current_resources, "PowerSupply"):
         found_nothing_count = 0
+        task_package["counters"]["found_nil"] = found_nothing_count
         return "PowerSupply", task_package
 
     # ---------------------------------------------------
@@ -212,6 +225,7 @@ def attempt_exploration(task_package, allow_chain_early=True):
             if not resource_is_discovered(current_resources, name):
                 # Force-discover this item
                 found_nothing_count = 0
+                task_package["counters"]["found_nil"] = found_nothing_count
                 return name, task_package
 
     # ---------------------------------------------------
@@ -268,6 +282,7 @@ def attempt_exploration(task_package, allow_chain_early=True):
 
     # 6) No major item found -> update 'found_nothing_count'
     found_nothing_count += 1
+    task_package["counters"]["found_nil"] = found_nothing_count
 
     # Streak-based gating
     is_gate_streak = found_nothing_count in (3, 6, 9)
@@ -278,6 +293,7 @@ def attempt_exploration(task_package, allow_chain_early=True):
         forced = force_next_critical(current_resources)
         if forced:
             found_nothing_count = 0 # reset streak
+            task_package["counters"]["found_nil"] = found_nothing_count
             return forced, task_package 
 
     # If ALL critical resources are found, we are in "post critical" mode:
@@ -293,29 +309,21 @@ def attempt_exploration(task_package, allow_chain_early=True):
         rarity = NORMAL_ITEM_RARITY
 
     # ---------------------------------------------------
-    # 7) Try Tarot, then Replacement, then Novelty/Junk
+    # 7) Replacement, then Novelty/Junk
     #    Important: these do NOT reset 'found_nothing_count' for criticals.
     # ---------------------------------------------------
 
-    # 7a) Tarot cards
-    tarot_chance = rarity.get("tarot", 0.0)
-    tarot_item = _pick_unfound_item(TAROT)
-    if tarot_item and random.random() < tarot_chance:
-        tarot_item["found"] = True
-        tarot_name = tarot_item["name"]
-        found_nothing_count = 0
-        return tarot_name, task_package
-
-    # 7b) Replacement items
+    # 7a) Replacement items
     replacement_chance = rarity.get("replacement", 0.0)
     replacement_item = _pick_unfound_item(REPLACEMENT)
     if replacement_item and random.random() < replacement_chance:
         replacement_item["found"] = True
         replacement_name = replacement_item["name"]
         found_nothing_count = 0
+        task_package["counters"]["found_nil"] = found_nothing_count
         return replacement_name, task_package
 
-    # 7c) Novelty / Junk
+    # 7b) Novelty / Junk
     novelty_chance = rarity.get("novelty", 0.0)
     novelty_item = _pick_unfound_item(NOVELTY)
 
@@ -327,6 +335,7 @@ def attempt_exploration(task_package, allow_chain_early=True):
             novelty_item["found"] = True
             novelty_item_name = novelty_item["name"]
             found_nothing_count = 0
+            task_package["counters"]["found_nil"] = found_nothing_count
             return novelty_item_name, task_package
 
         # If we didn't get novelty, give junk (if any) as a consolation prize.
@@ -335,6 +344,7 @@ def attempt_exploration(task_package, allow_chain_early=True):
             junk_item["found"] = True
             junk_item_name = junk_item["name"]
             found_nothing_count = 0
+            task_package["counters"]["found_nil"] = found_nothing_count
             return junk_item_name, task_package
 
         # If no junk left either, just fall through to "no find".
@@ -345,8 +355,8 @@ def attempt_exploration(task_package, allow_chain_early=True):
         novelty_item["found"] = True
         novelty_item_name = novelty_item["name"]
         found_nothing_count = 0
+        task_package["counters"]["found_nil"] = found_nothing_count
         return novelty_item_name, task_package
-
 
     # Small chance to get junk even on non-gate runs to keep things spicy
     junk_item = _pick_unfound_item(JUNK)
@@ -361,7 +371,7 @@ def attempt_exploration(task_package, allow_chain_early=True):
     return None, task_package
 
 
-def charge_droid(droid_name, droids, resources):
+def charge_droid(droid_name, droids, resources, turns_elapsed):
     user_message = ""
     power_resource = next((r for r in resources if r.get("name") == "PowerSupply"), None)
 
@@ -372,6 +382,8 @@ def charge_droid(droid_name, droids, resources):
     if power_resource["amount"] < FULL_CHARGE:
         user_message = get_message("charge", "not_enough_power", droid_name=droid_name)
         return user_message, droids, resources
+    
+    power_before_charge = power_resource["amount"]
 
     current_charge = droids[droid_name]["charge"]
 
@@ -390,6 +402,12 @@ def charge_droid(droid_name, droids, resources):
     power_resource["amount"] -= charge_amount-IDLE_CHARGE_USAGE
 
     user_message = get_message("charge", "success", droid_name=droid_name, new_charge=FULL_CHARGE)
+
+    # Warn if the power goes below a full charge for all the droids
+    power_after_charge = power_resource["amount"]
+    if power_after_charge < IDLE_CHARGE_USAGE*NUM_DROIDS and power_before_charge >= IDLE_CHARGE_USAGE*NUM_DROIDS:
+        msg_power(get_message("charge", "low_power_warning"), turns_elapsed, tone="warn")
+        
     return user_message, droids, resources
 
 
@@ -398,7 +416,7 @@ def decrease_droid_charge(task_package):
     humans =  task_package["humans"]
     resources =  task_package["resources"]
     tasks = task_package["tasks"]
-    turns_elapsed = task_package["turns_elapsed"]
+    turns_elapsed = task_package["counters"]["turns"]
         
     for i in range(NUM_DROIDS):
         droid_name = list(droids.keys())[i]
@@ -408,7 +426,7 @@ def decrease_droid_charge(task_package):
 
         # Warn if the charge drops below a certain level, but only warn once or twice at most (future proof for power usage)
         if (LOW_CHARGE_FLAG - 1) * IDLE_CHARGE_USAGE < droid_stats["charge"] <= LOW_CHARGE_FLAG * IDLE_CHARGE_USAGE:
-            log_and_display(get_message("charge", "getting_low", name=droid_name), turns_elapsed)
+            msg_power(get_message("charge", "getting_low", name=droid_name), turns_elapsed)
 
         if droid_stats["charge"] <= 0:
             tasks, droids, humans, resources = interrupt_task_if_no_power(droid_name, droids, humans, resources, tasks, turns_elapsed)
@@ -429,13 +447,12 @@ def interrupt_task_if_no_power(name, droids, humans, resources, tasks, turns_ela
     task_type = task["type"].lower()
 
     if task["type"] != TASK_CHARGING: # Only interrupt a task if the task is not charging
-        log_and_display(get_message("charge", "task_interrupt", name=name, task_type=task_type), turns_elapsed)
-        if task["type"] == TASK_ASSIGNED:
+        msg_power(get_message("charge", "task_interrupt", name=name, task_type=task_type), turns_elapsed)
+        if task["type"] == TASK_ASSIGNED or task["type"] == TASK_EXAMINING:
             item_name = task.get("item_name", "")
         elif task["type"] == TASK_PLANTING:
             hydro = next((r for r in resources if r["name"] == "HydroponicsRoom"), None)
-                        # Free the bed
-            bed = {}
+            # Free the beds
             for b in hydro["beds"]:
                 if b["reserved_by"] == name:
                     b["occupied"] = False
@@ -443,7 +460,123 @@ def interrupt_task_if_no_power(name, droids, humans, resources, tasks, turns_ela
                     b["name"] = ""
                     b["reserved_by"] = ""
 
+        item_name = ""
         humans, droids = clear_task_for_character(name, item_name, humans, droids)
         del tasks[task_id]
 
     return tasks, droids, humans, resources
+
+
+def choose_vials_and_display_power_produced(name, task_package, amount_only=False):
+    # Estimate how much power this will produce
+    resources = task_package["resources"]
+    humans = task_package["humans"]
+    droids = task_package["droids"]
+    turns_elapsed = task_package["counters"]["turns"]
+    task_data = task_package.get("task_data", {})
+    return_msg = ""
+    total_power = 0
+    red = indigo = gold = 0
+    
+    power_supply = next((r for r in resources if r.get("name") == "PowerSupply"), None)
+    if not power_supply:
+        return_msg = get_message("refuel", "no_power_supply")
+        humans, droids = clear_task_for_character(name, "", humans, droids)  # Clear the task
+        return return_msg, task_package, red, indigo, gold
+
+    vial_store = power_supply.get("VialStore", {})
+    if not vial_store or all(v == 0 for v in vial_store.values()):
+        return_msg = get_message("refuel", "no_vials_fail", name=name)
+        humans, droids = clear_task_for_character(name, "", humans, droids)  # Clear the task
+        return return_msg, task_package, red, indigo, gold
+
+    if not amount_only:
+        # Ask if they want to use all vials or choose amounts
+        use_all = get_confirm("Would you like to use all available crystal vials for refuelling? (y/n): ", turns_elapsed)
+
+        red_avail = vial_store.get("red", 0)
+        indigo_avail = vial_store.get("indigo", 0)
+        gold_avail = vial_store.get("gold", 0)
+
+        if use_all:
+            red = red_avail
+            indigo = indigo_avail
+            gold = gold_avail
+
+            total_power = (
+                red * POWER_PER_RED +
+                indigo * POWER_PER_INDIGO +
+                gold * POWER_PER_GOLD
+            )
+            num_days = total_power // FULL_CHARGE
+
+            summary_msg = (
+                f"Using all vials will create {total_power} units of power "
+                f"(enough to charge a single droid for {num_days} days). Proceed? (y/n)"
+            )
+
+            if get_confirm(summary_msg, turns_elapsed):
+                # Zero out the store and return
+                vial_store["red"] = 0
+                vial_store["indigo"] = 0
+                vial_store["gold"] = 0
+                return_msg = f"{name} will now proceed to use all available vials to refuel the PowerSupply and add an extra {total_power} units and {num_days} days' worth of droid charges."
+                return return_msg, task_package, red, indigo, gold
+
+        while True:
+            red = get_integer_input(f"How many RED crystals to use for refuelling? (0–{red_avail}): ", 0, red_avail)
+            indigo = get_integer_input(f"How many INDIGO crystals to use for refuelling? (0–{indigo_avail}): ", 0, indigo_avail)
+            gold = get_integer_input(f"How many GOLD crystals to use for refuelling? (0–{gold_avail}): ", 0, gold_avail)
+
+            if red == 0 and indigo == 0 and gold == 0:
+                return_msg = "No crystals selected for processing. Task cancelled."
+                return return_msg, task_package, red, indigo, gold
+
+            total_power = (
+                red * POWER_PER_RED +
+                indigo * POWER_PER_INDIGO +
+                gold * POWER_PER_GOLD
+            )
+            num_days = total_power // FULL_CHARGE
+
+            summary_msg = (
+                f"Summary: {red} red, {indigo} indigo, {gold} gold vials will create {total_power} units of power "
+                f"(enough to charge 1 droid for {num_days} days). Proceed? (y/n)"
+            )
+
+            if get_confirm(summary_msg, turns_elapsed):
+                break  # Success
+            else:
+                retry = get_confirm("Would you like to choose different amounts? (y/n): ", turns_elapsed)
+                if not retry:
+                    return_msg = get_message("refuel", "aborted", name=name)
+                    return return_msg, task_package, red, indigo, gold
+                
+        return_msg = f"{name} is now going to refuel the PowerSupply with only the amounts you have chosen. This will add {total_power} units of power to the system. Enough to charge a single droid for {num_days} days."
+
+        # Remove the chosen amounts
+        vial_store["red"] -= red
+        vial_store["indigo"] -= indigo
+        vial_store["gold"] -= gold
+
+    else:   # We are summarising after the fact (this is the complete_refuel_task side of things), using task_data
+        if task_data:
+            red = task_data["red"]
+            indigo = task_data["indigo"]
+            gold = task_data["gold"]
+            
+        total_power = (
+            red * POWER_PER_RED +
+            indigo * POWER_PER_INDIGO +
+            gold * POWER_PER_GOLD
+        )
+
+        # Now we can add the power
+        power_supply["amount"] += total_power
+        
+        if total_power == 0:
+            return_msg = f"As there were no vials of crystal dust chosen, no power can be generated."
+        else:
+            return_msg = f"Total power added to the PowerSupply from {red} red crystal vials, {indigo} indigo crystal vials and {gold} gold crystal vials was {total_power} units."
+
+    return return_msg, task_package, red, indigo, gold

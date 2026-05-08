@@ -1,19 +1,26 @@
 # main.py
 
-from utils import load_config, save_config
 from endgame import check_endgame, handle_game_over_loop
-from tasks import advance_tasks
-from turns import process_turn, progress_outpost
-from lore.lore_ingame import print_splash, print_commands
+from lore.lore_ingame import print_commands
 from lore.lore_story import get_story_message
-from lore.user_interface import get_command_from_player
+from OutpostUI import OutpostUI, get_state_panel_text, get_top_bar_data
+from turns import process_user_input
+from utils import load_config, save_config
 
+import tkinter as tk
 
 def main():
-    print_splash()
-    task_package = load_config()
+    root = tk.Tk()
+    ui = OutpostUI(root)
 
-    if task_package["gamestate"]["game_over"] != True:
+    import lore.user_interface as ui_runtime
+    ui_runtime.UI_MODE = "gui"
+    ui_runtime.ACTIVE_UI = ui
+    
+    task_package = load_config()
+    turns_elapsed = task_package["counters"]["turns"]
+
+    if not task_package["gamestate"]["game_over"]:
         print(get_story_message("start", "opening_message"))
 
     # Initial endgame check
@@ -22,31 +29,22 @@ def main():
     if game_over:
         task_package = handle_game_over_loop(end_msg)
     else:
-        print_commands()
+        print_commands(turns_elapsed)
 
-    while True:
-        command = get_command_from_player()
+    # Set some of the GUI requirements
+    top = get_top_bar_data(task_package)
+    ui.set_top_stats(**top)
 
-        # Process the turn
-        count_as_turn, task_package = process_turn(command, task_package)
+    state_text = get_state_panel_text(task_package)
+    ui.set_state_text(state_text)
 
-        if count_as_turn:
-            save_config(task_package)
+    def command_callback(command):
+        ui.append_log(f">> {command}")
+        process_user_input(command)
 
-            # Advance tasks
-            task_package = advance_tasks(task_package)
+    ui.set_command_callback(command_callback)
 
-            # Progress the outpost
-            task_package = progress_outpost(task_package)
-
-            # Check for endgame
-            game_over, end_msg, task_package = check_endgame(task_package)
-
-            if game_over:
-                task_package = handle_game_over_loop(end_msg)
-
-        # Save always
-        save_config(task_package)
+    root.mainloop()
 
 
 if __name__ == "__main__":

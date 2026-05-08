@@ -5,7 +5,7 @@ import sys
 from constants import ENDGAME_REASONS
 from lore.lore_ingame import get_message, print_commands
 from lore.lore_story import get_story_message
-from lore.user_interface import log_and_display, get_input
+from lore.user_interface import get_input, msg_story
 from status import print_status
 from utils import initialise_outpost, check_shield_state
 
@@ -17,7 +17,7 @@ def check_endgame(task_package):
     gamestate = task_package["gamestate"]
     humans = task_package["humans"]
     resources = task_package["resources"]
-    turns_elapsed = task_package["turns_elapsed"]
+    turns_elapsed = task_package["counters"]["turns"]
 
     # 1. Game already ended
     if gamestate.get("game_over"):
@@ -77,24 +77,25 @@ def mgc_is_here_check_the_shield(task_package):
 
 def handle_game_over_loop(task_package):
     # Handles user input after game over.
-    #Returns updated task_package or exits.
+    # Returns updated task_package or exits.
+    turns_elapsed = task_package["counters"]["turns"]
 
     print_status(task_package)
 
     while True:
-        choice = get_input("input", "endgame_choice", task_package["turns_elapsed"])
+        choice = get_input("input", "endgame_choice", task_package["counters"]["turns"])
         reason_code = task_package["gamestate"].get("endgame_reason")
 
         if choice in ("reset", "r"):
             task_package = initialise_outpost(first_time=False)
-            print_commands()
+            print_commands(turns_elapsed)
             return task_package
 
         if choice in ("quit", "exit", "q"):
             if reason_code == "you_win?":
-                log_and_display(get_story_message("quit", "you_win?"), task_package["turns_elapsed"])
+                msg_story(get_story_message("quit", "you_win?"), task_package["counters"]["turns"])
             else:
-                log_and_display(get_story_message("quit", "fail"), task_package["turns_elapsed"])
+                msg_story(get_story_message("quit", "fail"), task_package["counters"]["turns"])
             sys.exit(0)
 
-        log_and_display(get_story_message("endgame", "restart"), task_package["turns_elapsed"])
+        msg_story(get_story_message("endgame", "restart"), task_package["counters"]["turns"])

@@ -6,13 +6,17 @@ from datetime import datetime
 from commands import handle_immediate_or_queued_task
 from command_utils import handle_read_command, handle_manage_command
 from constants import NUM_HUMANS
-from lore.lore_ingame import print_help, get_message
+from endgame import check_endgame, handle_game_over_loop
+from lore.lore_ingame import get_message, handle_help_command
 from lore.lore_story import get_story_message
-from lore.user_interface import log_and_display
+import lore.user_interface as ui_runtime
+from lore.user_interface import msg_story, msg_error
+from OutpostUI import get_state_panel_text, get_top_bar_data
 from planting import update_crop_growth
 from resources import decrease_droid_charge
 from status import print_status, handle_list_command
-from utils import is_command_enabled, load_config, process_hunger_status, check_shield_state, reset_config
+from tasks import advance_tasks
+from utils import is_command_enabled, load_config, process_hunger_status, check_shield_state, reset_config, save_config, update_screen
 
 
 def process_turn(command, task_package):
@@ -25,22 +29,22 @@ def process_turn(command, task_package):
     dock_a_turn = False
     valid_command = True
 
-    turns_elapsed = task_package["turns_elapsed"]
+    turns_elapsed = task_package["counters"]["turns"]
     gamestate = task_package["gamestate"]
 
     # Restrict commands if game is over
     if gamestate.get("game_over", False) and action not in ["status", "help", "reset", "quit"]:
-        log_and_display(get_story_message("endgame", "restart"), turns_elapsed)
+        msg_story(get_story_message("endgame", "restart"), turns_elapsed)
         return True, task_package
 
     # Unknown command
     if action not in gamestate:
-        log_and_display(get_message("error", "unknown_command", command=action), turns_elapsed)
+        msg_error(get_message("error", "unknown_command", command=action), turns_elapsed)
         return False, task_package
 
     # Command not yet unlocked
     if not is_command_enabled(action, gamestate):
-        log_and_display(get_message("error", "can't_do_that_yet", command=command), turns_elapsed)
+        msg_error(get_message("error", "can't_do_that_yet", command=command), turns_elapsed)
         return False, task_package
 
     # Handle known commands
@@ -61,11 +65,11 @@ def process_turn(command, task_package):
         print_status(task_package)
 
     elif action == "help":
-        print_help(gamestate=gamestate)
+        handle_help_command(task_package, qualifier=qualifier, gamestate=gamestate)
 
     elif action == "quit":
-        log_and_display(get_message("quit", "final"), turns_elapsed)
-        log_and_display(f"Session ended: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}", turns_elapsed)
+        msg_story(get_message("quit", "final"), turns_elapsed)
+        msg_story(f"Session ended: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}", turns_elapsed)
         exit(0)
 
     elif action == "reset":
@@ -73,13 +77,7 @@ def process_turn(command, task_package):
         task_package = load_config()
 
     else:
-        valid_command, task_package = handle_immediate_or_queued_task(action, qualifier, task_package)
-
-        if not valid_command:
-            log_and_display(get_message("error", "unknown_command", command=action), turns_elapsed)
-            dock_a_turn = False
-        else:
-            dock_a_turn = True
+        dock_a_turn, task_package = handle_immediate_or_queued_task(action, qualifier,  task_package)
 
     return dock_a_turn, task_package
 
@@ -111,8 +109,8 @@ def print_day_message(turns_elapsed, droids):
     if "{day}" in message:
         message = message.format(day)
 
-    log_and_display("-"*60, turns_elapsed, day)
-    log_and_display(f"End of Day {day}: "+message, turns_elapsed, day)
+    msg_story("-"*60, turns_elapsed)
+    msg_story(f"End of Day {day}: "+message, turns_elapsed)
 
     # Add extra narrative hint if droids still offline
     droids_online = False
@@ -122,24 +120,22 @@ def print_day_message(turns_elapsed, droids):
             break
 
     if day == 3 and not droids_online:
-        log_and_display(get_story_message("no_droids", "day_3"), turns_elapsed, day)
+        msg_story(get_story_message("no_droids", "day_3"), turns_elapsed)
 
     elif day == 6 and not droids_online:
-        log_and_display(get_story_message("no_droids", "day_6"), turns_elapsed, day)
+        msg_story(get_story_message("no_droids", "day_6"), turns_elapsed)
 
-    # NOTE: We don't currently "fail" if the droids WERE charged and drp back to zero - note for later
-
-    log_and_display("-"*60, turns_elapsed, day)
+    msg_story("-"*60, turns_elapsed)
 
 
 def progress_outpost(task_package):
     # Performs world progression that is NOT part of tasks or user commands.
 
     # Increment turn count
-    task_package["turns_elapsed"] += 1
+    task_package["counters"]["turns"] += 1
 
-    if task_package["turns_elapsed"] % 10 == 0:
-        print_day_message(task_package["turns_elapsed"], task_package["droids"])
+    if task_package["counters"]["turns"] % 10 == 0:
+        print_day_message(task_package["counters"]["turns"], task_package["droids"])
 
     # --- Human hunger ---
     for name, stats in task_package["humans"].items():
@@ -157,5 +153,63 @@ def progress_outpost(task_package):
     task_package = check_shield_state(task_package)
 
     # Future: weather, morale, events...
+
+    return task_package
+
+
+def process_user_input(command, resuming=False):
+    task_package = load_config()
+    turn_suspended = task_package["gamestate"].get("turn_suspended", False)
+
+    # If this is a brand-new turn, process the command first
+    if not resuming and not turn_suspended:
+        count_as_turn, task_package = process_turn(command, task_package)
+
+        # Invalid command / non-turn command: just save and return
+        if not count_as_turn:
+            save_config(task_package)
+            update_screen(task_package)
+            return task_package
+
+        save_config(task_package)
+
+    # Whether this is:
+    # 1. a freshly processed turn command, or
+    # 2. a resumed suspended turn after a GUI response,
+    # continue the turn pipeline here.
+    task_package = resume_turn_processing(task_package)
+    return task_package
+
+
+def resume_turn_processing(task_package):
+    # Continue processing a turn after a command has already been accepted,
+    # or after a GUI question/answer has resolved.
+    awaiting_input, task_package = advance_tasks(task_package)
+
+    if awaiting_input:
+        task_package["gamestate"]["turn_suspended"] = True
+        save_config(task_package)
+        return task_package
+
+    task_package["gamestate"]["turn_suspended"] = False
+    complete_turn(task_package)
+    save_config(task_package)
+    return task_package
+
+
+def complete_turn(task_package):
+    # Progress the outpost
+    task_package = progress_outpost(task_package)
+
+    # Check for endgame
+    game_over, end_msg, task_package = check_endgame(task_package)
+
+    if game_over:
+        task_package = handle_game_over_loop(end_msg)
+
+    # Save and update always
+    task_package["gamestate"]["turn_suspended"] = False
+    save_config(task_package)
+    update_screen(task_package)
 
     return task_package

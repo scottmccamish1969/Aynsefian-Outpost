@@ -27,7 +27,7 @@ GENDERS = {
 
 # Human hunger triggers
 HUNGER = {
-    "Okay": (0, 0),
+    "Okay": (0, 6),
     "Hungry": (7, 9),
     "Starving": (16, 18),
     "Near Death": (25, 27),
@@ -46,23 +46,57 @@ INITIAL_CHARGE = 15000      # Enough for 15 droid charges (7.5 days for all char
 FULL_CHARGE = 1000          # The most a droid can be charged to
 IDLE_CHARGE_USAGE = 50      # 50/turn leads to 500/day, leading to 2 days per full charge
 LOW_CHARGE_FLAG = 6         # This is measured in turns (i.e. 6 turns before running out of charge - they get a warning message)
+TOW_TASK_LENGTH = 1         # How long it takes to take a droid to the power supply
 
 # Task names
-TASK_EATING   = "Eating"
+TASK_ASSIGNED  = "Assigned"
 TASK_CHARGING  = "Charging"
-TASK_EXPLORING = "Exploring"
+TASK_EATING    = "Eating"
 TASK_EXAMINING = "Examining"
-TASK_REPAIRING = "Repairing"
+TASK_EXPLORING = "Exploring"
+TASK_MINING    = "Mining"
 TASK_PLANTING  = "Planting"
 TASK_REAPING   = "Reaping"
-TASK_MINING    = "Mining"
-TASK_ASSIGNED  = "Assigned"
 TASK_REFUELING = "Refueling"
+# Either not used (yet) or internal commands (code-generated)
+TASK_REPAIRING = "Repairing"
+TASK_TOWING_DROID = "Towing"
+
+# Command names (action commands)
+CMD_ASSIGN = "assign"
+CMD_CHARGE = "charge"
+CMD_EXAMINE = "examine"
+CMD_EXPLORE = "explore"
+CMD_FEED = "feed"
+CMD_MINE = "mine"
+CMD_PLANT = "plant"
+CMD_REAP = "reap"
+CMD_REFUEL = "refuel"
+# Command names (other)
+CMD_HELP = "help"
+CMD_LIST = "list"
+CMD_QUIT = "quit"
+CMD_READ = "read"
+CMD_RESET = "reset"
+CMD_STATUS = "status"
+
+# Mapping (for use in some functions)
+COMMAND_MAP = {
+    TASK_ASSIGNED: CMD_ASSIGN,
+    TASK_CHARGING: CMD_CHARGE,
+    TASK_EATING: CMD_FEED,
+    TASK_EXAMINING: CMD_EXAMINE,
+    TASK_EXPLORING: CMD_EXPLORE,
+    TASK_MINING: CMD_MINE,
+    TASK_PLANTING: CMD_PLANT,
+    TASK_REAPING: CMD_REAP,
+    TASK_REFUELING: CMD_REFUEL,
+}
 
 # Task timings (ranged)
 TASK_LENGTH = {
-    "feed_human": (1, 1),
-    "explore_human": (2, 5),
+    "feed_human": (2, 2),
+    "explore_human": (3, 5),
     "examine_human": (1, 2), # This MUST be added to the item examine time
     "reap_human": (4, 6),
     "plant_human": (6, 8),
@@ -108,6 +142,7 @@ INITIAL_GAMESTATE = {
     "status": True,
     "quit": True,
     "game_over": False,
+    "turn_suspended": False,
     "endgame_reason": "null",
 }
 
@@ -121,10 +156,11 @@ GROWTH_TURNS = {
 # Default planting amounts
 SEED_PACKETS_USED = {
     "apple": 40,
-    "cabbage": 11,
+    "cabbage": 10,
     "potato": 20
 }
 INITIAL_SEED_STASH = 400
+REAP_SEED_FRACTION = 0.75
 
 # Crop Yield Range
 YIELD_RANGE = {
@@ -211,23 +247,20 @@ GATING_RULES = [
 ]
 
 # Base chances for a *single* explore, when we did NOT find an essential.
-# These are *per explore*, not per-item. We try in order: tarot → replacement → novelty → (maybe junk).
+# These are *per explore*, not per-item. We try in order: replacement → novelty → (maybe junk).
 NORMAL_ITEM_RARITY = {
-    "tarot": 0.02,       # 2% chance each explore
     "replacement": 0.03, # 3% chance
     "novelty": 0.10,     # 10% chance (novelty or junk)
 }
 
 # Elevated chances when we're in a "gate streak" (3, 6, 9 failed essential attempts in a row).
 GATE_ITEM_RARITY = {
-    "tarot": 0.04,       # 4%
     "replacement": 0.05, # 5%
     "novelty": 0.20,     # 20% (else junk)
 }
 
 # After ALL essentials (including chain) are found, exploring becomes a "lore / flavour" hunt:
 POST_CRITICAL_ITEM_RARITY = {
-    "tarot": 0.20,       # 20% chance for a Tarot card
     "replacement": 0.00, # no more replacements needed
     "novelty": 0.30,     # 30% chance novelty, else junk
 }

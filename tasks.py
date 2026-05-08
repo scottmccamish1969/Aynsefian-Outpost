@@ -2,23 +2,27 @@
 
 import random
 
-from commands import handle_immediate_or_queued_task
+from commands import handle_immediate_or_queued_task, initiate_charge_task
 from command_utils import create_task
-from constants import (TASK_EATING, TASK_CHARGING, TASK_EXPLORING, TASK_PLANTING, TASK_EXAMINING, TASK_REAPING, TASK_MINING, TASK_ASSIGNED, TASK_REFUELING,
-                       RATION_PACKS, GROWTH_TURNS, YIELD_RANGE, CRYSTAL_RATIO, BASE_CRYSTAL_YIELD, POWER_PER_RED, POWER_PER_INDIGO, POWER_PER_GOLD)
+from constants import (TASK_EATING, TASK_CHARGING, TASK_EXPLORING, TASK_PLANTING, TASK_EXAMINING, TASK_REAPING, TASK_MINING, TASK_ASSIGNED, TASK_REFUELING, TASK_TOWING_DROID,
+                       RATION_PACKS, GROWTH_TURNS, YIELD_RANGE, CRYSTAL_RATIO, BASE_CRYSTAL_YIELD, TASK_LENGTH, INITIAL_SEED_STASH, REAP_SEED_FRACTION, SEED_PACKETS_USED)
 from lore.lore_ingame import get_message
-from lore.user_interface import log_and_display, get_input
+import lore.user_interface as ui_runtime
+from lore.user_interface import (get_input, msg_plant, msg_explore, msg_resource, msg_power, msg_food, msg_shield, msg_mine, msg_crystal,
+                                 msg_error, msg_warn, log_and_display)
 from planting import update_food_amount, feed_human
-from queuing import get_next_task_from_queue_if_any
-from resources import charge_droid, attempt_exploration, react_to_found_resource, add_or_get_discovered_item
-from utils import get_pronouns, set_shield_state, clear_task_for_character, get_task_by_worker
+from queuing import get_next_task_from_queue_if_any, get_character_status, do_auto_charge, do_auto_feed
+from resources import charge_droid, attempt_exploration, react_to_found_resource, add_or_get_discovered_item, choose_vials_and_display_power_produced
+from utils import get_pronouns, set_shield_state, clear_task_for_character, get_task_by_worker, set_examine_needed_after_explore, save_config
 
 
 def advance_tasks(task_package):
     completed = []
+    awaiting_input = False
 
     tasks = task_package["tasks"]
-    turns_elapsed = task_package["turns_elapsed"]
+    humans = task_package["humans"]
+    turns_elapsed = task_package["counters"]["turns"]
 
     for task_id, task in tasks.items():
         task["duration"] -= 1
@@ -36,29 +40,53 @@ def advance_tasks(task_package):
 
         if task_type == TASK_EATING:
             completed_msg, task_package = complete_feed_task(name, task_package)
+            msg_food(completed_msg, turns_elapsed)
         elif task_type == TASK_CHARGING:
             completed_msg, task_package = complete_charge_task(name, task_package)
+            msg_power(completed_msg, turns_elapsed)
         elif task_type == TASK_EXPLORING:
-            completed_msg, is_examining, task_package = complete_explore_task(name, task_package)
+            completed_msg, is_examining, awaiting_input, task_package = complete_explore_task(name, task_package)
+            if awaiting_input:
+                return awaiting_input, task_package
+            elif is_examining:
+                msg_resource(completed_msg, turns_elapsed)
+            else:  # This will be an auto-feed or auto-charge
+                if name in humans:
+                    msg_food(completed_msg, turns_elapsed)
+                else:
+                    msg_power(completed_msg, turns_elapsed)
+                log_and_display("", turns_elapsed, stamp=None)
         elif task_type == TASK_PLANTING:
             completed_msg, task_package = complete_plant_task(name, task_package)
+            msg_plant(completed_msg, turns_elapsed)
         elif task_type == TASK_EXAMINING:
             completed_msg, task_package = complete_examine_task(name, task_package)
+            msg_resource(completed_msg, turns_elapsed)
         elif task_type == TASK_REAPING:
             completed_msg, task_package = complete_reap_task(name, task_package)
+            msg_plant(completed_msg, turns_elapsed)
         elif task_type == TASK_MINING:
             completed_msg, task_package = complete_mine_task(name, task_package)
+            msg_mine(completed_msg, turns_elapsed)
         elif task_type == TASK_ASSIGNED:
             if item_name == "CrystalProcessor":
                 completed_msg, task_package = complete_assign_process_task(name, task_package)
+                msg_crystal(completed_msg, turns_elapsed)
             elif item_name == "ShieldManual":
                 completed_msg, task_package = complete_assign_shieldmanual_task(name, task_package)
+                msg_shield(completed_msg, turns_elapsed)
             else:
                 completed_msg = get_message("assign", "cannot_complete_assign_task")
+                msg_warn(completed_msg, turns_elapsed)
         elif task_type == TASK_REFUELING:
             completed_msg, task_package = complete_refuel_task(name, task_package)
+            msg_crystal(completed_msg, turns_elapsed)
+        elif task_type == TASK_TOWING_DROID:
+            completed_msg, task_package = complete_towing_task(name, task_package)
+            msg_power(completed_msg, turns_elapsed)
         else:
             completed_msg = get_message("task", "unknown", name=name, task_type=task_type.lower())
+            msg_error(completed_msg, turns_elapsed)
 
         # Remove task from registry
         if task_id in tasks:
@@ -66,15 +94,13 @@ def advance_tasks(task_package):
 
         # Now try to pull from the queue (unless currently examining)
         if not is_examining:
-            next_action, character, task_package = get_next_task_from_queue_if_any(name, completed_msg, task_package)
+            next_action, character, task_package = get_next_task_from_queue_if_any(name, task_package)
 
             # Attempt to initiate queued task (if any)
             if next_action:
                 valid_command, task_package = handle_immediate_or_queued_task(next_action, character, task_package)
-                if not valid_command:
-                    log_and_display(get_message("error", "invalid_command_from_function", action=next_action), turns_elapsed)
 
-    return task_package
+    return awaiting_input, task_package
 
 
 def complete_feed_task(name, task_package):
@@ -82,15 +108,15 @@ def complete_feed_task(name, task_package):
     return_msg = ""
     humans = task_package["humans"]
     droids = task_package["droids"]
-    turns_elapsed = task_package["turns_elapsed"]
+    turns_elapsed = task_package["counters"]["turns"]
 
     if name in humans:
         return_msg, task_package = feed_human(name, task_package)
         humans, droids = clear_task_for_character(name, "", humans, droids)
     elif name in droids:
-        log_and_display(get_message("feed_droid", "responses", droid_name=name), turns_elapsed)
+        msg_power(get_message("feed_droid", "responses", droid_name=name), turns_elapsed)
     else:
-        log_and_display(get_message("error", "feed_invalid", person_name=name), turns_elapsed)
+        msg_food(get_message("error", "feed_invalid", person_name=name), turns_elapsed, tone="error")
 
     return return_msg, task_package
 
@@ -100,10 +126,11 @@ def complete_charge_task(name, task_package):
     humans = task_package["humans"]
     droids = task_package["droids"]
     resources = task_package["resources"]
+    turns_elapsed = task_package["counters"]["turns"]
 
     # Now we can charge the droid
     if name in droids:
-        return_msg, droids, resources = charge_droid(name, droids, resources)
+        return_msg, droids, resources = charge_droid(name, droids, resources, turns_elapsed)
         humans, droids = clear_task_for_character(name, "", humans, droids)
     return return_msg, task_package
 
@@ -112,14 +139,16 @@ def complete_explore_task(name, task_package):
     humans = task_package["humans"]
     droids = task_package["droids"]
     resources = task_package["resources"]
-    tasks = task_package["tasks"]
-    task_number = task_package["task_number"]
-    turns_elapsed = task_package["turns_elapsed"]
+    turns_elapsed = task_package["counters"]["turns"]
     gamestate = task_package["gamestate"]
     shieldstate = task_package["shieldstate"]
     return_msg = ""
-    task_created_msg = ""
     is_examining = False
+    awaiting_input = False
+        
+    def set_task_length(task_type):
+        low, high = TASK_LENGTH[task_type]
+        return random.randint(low, high)
     
     # Resolve the end of an explore task for `character`.
     discovered_name, task_package = attempt_exploration(task_package)
@@ -128,7 +157,7 @@ def complete_explore_task(name, task_package):
         if isinstance(discovered_name, dict):
             discovered_name = discovered_name.get("name", None)
         elif not isinstance(discovered_name, str):
-            log_and_display(get_message("explore", "unexpected_type", name=discovered_name), turns_elapsed)
+            msg_explore(get_message("explore", "unexpected_type", name=discovered_name), turns_elapsed)
             discovered_name = None
 
         # Ensure the discovered item exists in the resources list
@@ -141,61 +170,161 @@ def complete_explore_task(name, task_package):
         # Is this a human or droid?
         is_human = name in humans
         pronouns = get_pronouns(name, is_human)
+        task_package["item"] = res_name
         
+        # Handle the post "find" tasks, excluding the examine
         if res_name == "FoodStore":
             return_msg = get_message("explore", "found_food", target=name, amount=RATION_PACKS, res_name=res_name)
             discovered["examinable"] = False
             humans, droids = clear_task_for_character(name, "", humans, droids) # Clear task if not examinable
         else:
+            # If the character is hungry or low on charge, put a pause on the examine and feed or charge them
+            state = get_character_status(name, humans, droids)
+            if state in ("Hungry", "Starving", "Low", "Out"):
+                is_examining = False
+                task_package = set_examine_needed_after_explore(name, task_package)
+                if is_human: 
+                    return_msg, task_package = do_auto_feed(name, task_package)
+                else: 
+                    return_msg, task_package = do_auto_charge(name, task_package)
+                return return_msg, is_examining, task_package
+            
+            # They are okay with regards to food or charge, so continue to respond to what was found
             discovered["examinable"] = True
+
+            if ui_runtime.UI_MODE == "gui" and ui_runtime.ACTIVE_UI is not None:
+                ui_runtime.ACTIVE_UI.set_pending_question(
+                    callback=handle_examine_answer,
+                    context={
+                        "task_package": task_package,
+                        "character_name": name,
+                        "item": discovered,
+                        "item_name": discovered_name,
+                        "is_human": is_human,
+                        "is_examining": False
+                    }
+                )
             answer = get_input("input", "explore_found", turns_elapsed, target=name, res_name=res_name, pronoun=pronouns["p2"].lower())
 
-            if answer == 'y':
-                if discovered.get("examine_turns", 0) > 0:
-                    # Remove the existing explore task
-                    if is_human:
-                        task_now_doing = humans[name]["task"]
-                    else:
-                        task_now_doing = droids[name]["task"]
-                    if task_now_doing in tasks:
-                        del tasks[task_now_doing]
+            if answer == ui_runtime.GUI_PENDING:
+                awaiting_input = True
+                return return_msg, is_examining, awaiting_input, task_package
 
-                    # Create examine task
-                    is_human = name in humans
-                    task_type = TASK_EXAMINING
-                    task_created_msg, tasks, task_number, humans, droids = create_task(tasks, task_number, task_type, humans, droids, name, is_human,
-                                                     discovered["examine_turns"], turns_elapsed, item_name=discovered["name"])
-                    
-                    # We do a log and display here, because this is where we transition to an examine
-                    is_examining = True
-                    log_and_display(f"{return_msg} {task_created_msg}", turns_elapsed)
-                else:
-                    # Instant examine
-                    new_msg = discovered["msg"].format(name=name, 
-                            R=discovered.get("red", ""), I=discovered.get("indigo", ""), G=discovered.get("gold", ""),
-                            A=discovered.get("apple",""), C=discovered.get("cabbage",""), P=discovered.get("potato",""), 
-                            amount=discovered.get("amount", ""))
-                    formatted_msg = f"{discovered_name}: " + new_msg
-                    return_msg = formatted_msg
-                    discovered["examined"] = True
-                    discovered["msg"] = new_msg
-                    humans, droids = clear_task_for_character(name, "", humans, droids) # Clear the task if instant examine
+            if answer == 'y':
+                return_msg, is_examining, task_package = examine_after_explore(task_package, name, discovered, discovered_name, is_human, is_examining)
             else:
                 return_msg = get_message("explore", "not_examined", target=name, res_name=discovered["name"])
                 humans, droids = clear_task_for_character(name, "", humans, droids) # Clear the task if they are not examining
     else:
-        return_msg = get_message("explore", "nothing_found", target=name)
+        is_human = name in humans
+        pronouns = get_pronouns(name, is_human=is_human)
+        if is_human: 
+            has_have = "has" 
+        else: 
+            has_have = "have"
+        return_msg = get_message("explore", "nothing_found", target=name, pronoun=pronouns["p1"].lower(), pronoun2=pronouns["p3"].lower(), has_have=has_have)
         humans, droids = clear_task_for_character(name, "", humans, droids)  # Clear the task if they found nothing
 
+    return return_msg, is_examining, awaiting_input, task_package
+
+
+# Process the response from the user as to whether or not they should examine an item that was just found
+def handle_examine_answer(answer, context):
+    task_package = context["task_package"]
+    name = context["character_name"]
+    item = context["item"]
+    item_name = context["item_name"]
+    is_human = context["is_human"]
+    turns_elapsed = task_package["counters"]["turns"]
+
+    if answer.lower() == "y":
+        return_msg, is_examining, task_package = examine_after_explore(task_package, name, item, item_name, is_human, False)
+        msg_resource(return_msg, turns_elapsed)
+
+        # If they are not now engaged in a new examine task,
+        # allow them to pull the next queued task immediately.
+        if not is_examining:
+            next_action, character, task_package = get_next_task_from_queue_if_any(name, task_package)
+            if next_action:
+                valid_command, task_package = handle_immediate_or_queued_task(next_action, character, task_package)
+
+    else:
+        humans = task_package["humans"]
+        droids = task_package["droids"]
+
+        return_msg = get_message("explore", "not_examined", target=name, res_name=item["name"])
+        msg_resource(return_msg, turns_elapsed)
+
+        humans, droids = clear_task_for_character(name, "", humans, droids)
+        task_package["humans"] = humans
+        task_package["droids"] = droids
+
+        next_action, character, task_package = get_next_task_from_queue_if_any(name, task_package)
+        if next_action:
+            valid_command, task_package = handle_immediate_or_queued_task(next_action, character, task_package)
+
+    # The question is now resolved, so the suspended turn may continue.
+    task_package["gamestate"]["turn_suspended"] = False
+    save_config(task_package)
+
+    return task_package
+
+
+def examine_after_explore(task_package, character_name, item, item_name, is_human, is_examining):
+    # Handler for what to do after an explore has completed
+    tasks = task_package["tasks"]
+    humans = task_package["humans"]
+    droids = task_package["droids"]
+    
+    def set_task_length(task_type):
+        low, high = TASK_LENGTH[task_type]
+        return random.randint(low, high)
+
+    if item.get("examine_turns", 0) > 0:
+        task_type = TASK_EXAMINING
+        duration = 0
+                    
+        # Do human or droid specific things
+        if is_human:
+            duration = item["examine_turns"] + set_task_length("examine_human")
+            task_now_doing = humans[character_name]["task"]
+            humans[character_name]["generated"] = True
+        else:
+            duration = item["examine_turns"] + set_task_length("examine_droid")
+            task_now_doing = droids[character_name]["task"]
+            droids[character_name]["generated"] = True
+
+        # Remove the existing explore task
+        task_id, active_task = get_task_by_worker(tasks, character_name)
+        if task_id is not None:
+            del tasks[task_id]
+
+        # Create the Examine task
+        return_msg, task_package = create_task(character_name, task_type, duration, task_package)
+        is_examining = True
+    else:
+        # Instant examine
+        new_msg = item["msg"].format(name=character_name, 
+                R=item.get("red", ""), I=item.get("indigo", ""), G=item.get("gold", ""),
+                A=item.get("apple",""), C=item.get("cabbage",""), P=item.get("potato",""), 
+                amount=item.get("amount", ""))
+        formatted_msg = f"{item_name}: " + new_msg
+        return_msg = formatted_msg
+        item["examined"] = True
+        item["msg"] = new_msg
+        humans, droids = clear_task_for_character(character_name, "", humans, droids) # Clear the task if instant examine
+                    
     return return_msg, is_examining, task_package
 
 
 def complete_plant_task(name, task_package):
     task_data = task_package["task_data"]
     resources = task_package["resources"]
+    humans = task_package["humans"]
+    droids = task_package["droids"]
     crops = task_package["crops"]
-    crop_number = task_package["crop_number"]
-    turns_elapsed = task_package["turns_elapsed"]
+    crop_number = task_package["counters"]["crop"]
+    turns_elapsed = task_package["counters"]["turns"]
     return_msg = ""
 
     # Complete the planting of what was advised
@@ -214,6 +343,9 @@ def complete_plant_task(name, task_package):
         return_msg = get_message("plant", "no_seedstash")
         humans, droids = clear_task_for_character(worker, "", humans, droids)   # Clear the task
         return return_msg, task_package
+    
+    # Count the seeds before we do the actual planting
+    total_seeds_before = stash.get('apple', 0) + stash.get('cabbage', 0) + stash.get('potato', 0)
 
     total_planted = 0
 
@@ -227,17 +359,17 @@ def complete_plant_task(name, task_package):
             bed = next((b for b in hydro["beds"] if b == bed_id), None)
 
             if bed is None:
-                log_and_display(get_message("plant", "invalid_bed", bed=bed_id), turns_elapsed)
+                msg_plant(get_message("plant", "invalid_bed", bed=bed_id), turns_elapsed, tone="error")
                 continue
 
             # 🚫 Bed not available (for now we assume bed is reserved properly - so we don't check for that)
             if bed["occupied"]:
-                log_and_display(get_message("plant", "bed_occupied", bed=bed_id), turns_elapsed)
+                msg_plant(get_message("plant", "bed_occupied", bed=bed_id), turns_elapsed, tone="error")
                 continue
 
             # 🌱 Seed check
             if stash.get(crop_type, 0) <= 0:
-                log_and_display(get_message("plant", "not_enough_seeds", crop=crop_type), turns_elapsed)
+                msg_plant(get_message("plant", "not_enough_seeds", crop=crop_type), turns_elapsed, tone="warn")
                 continue
 
             # ⏱ Growth time
@@ -267,9 +399,10 @@ def complete_plant_task(name, task_package):
 
             total_planted += 1
             crop_number += 1
+            task_package["counters"]["crop"] = crop_number
 
             # 🌿 Per-crop feedback
-            log_and_display(get_message("plant", "crop_started", target=worker, crop=crop_type, bed=bed_id), turns_elapsed)
+            msg_plant(get_message("plant", "crop_started", target=worker, crop=crop_type, bed=bed_id), turns_elapsed, tone="success")
 
     # 📢 Summary message
     if total_planted == 0:
@@ -280,6 +413,11 @@ def complete_plant_task(name, task_package):
     # Clear the task
     humans, droids = clear_task_for_character(worker, "", humans, droids)
 
+    # Now check how many seeds we have and warn if low (below 20% of the initial stash)
+    total_seeds_after = stash.get('apple', 0) + stash.get('cabbage', 0) + stash.get('potato', 0)
+    if total_seeds_after < INITIAL_SEED_STASH * 0.2 and total_seeds_before >= INITIAL_SEED_STASH * 0.2:
+        msg_plant(get_message("plant", "low_seeds_warning"), turns_elapsed, low_count=INITIAL_SEED_STASH * 0.2, tone="warn")
+
     return return_msg, task_package
 
 
@@ -287,7 +425,7 @@ def complete_examine_task(name, task_package):
     return_msg = ""
     tasks = task_package["tasks"]
     resources = task_package["resources"]
-    turns_elapsed = task_package["turns_elapsed"]
+    turns_elapsed = task_package["counters"]["turns"]
     humans = task_package["humans"]
     droids = task_package["droids"]
     shieldstate = task_package["shieldstate"]
@@ -341,11 +479,12 @@ def complete_examine_task(name, task_package):
 
 def complete_reap_task(name, task_package):
     resources = task_package["resources"]
-    turns_elapsed = task_package["turns_elapsed"]
+    turns_elapsed = task_package["counters"]["turns"]
     humans = task_package["humans"]
     droids = task_package["droids"]
     crops = task_package["crops"]
     return_msg = ""
+    appleseeds = cabbageseeds = potatoseeds = 0
 
     hydro = next((r for r in resources if r["name"] == "HydroponicsRoom"), None)
 
@@ -361,6 +500,13 @@ def complete_reap_task(name, task_package):
 
         if crop["mature"]:
             ctype = crop["crop_type"]
+            if ctype == "apple":
+                appleseeds += int(REAP_SEED_FRACTION * SEED_PACKETS_USED["apple"])
+            elif ctype == "cabbage":
+                cabbageseeds += int(REAP_SEED_FRACTION * SEED_PACKETS_USED["cabbage"])
+            elif ctype == "potato":
+                potatoseeds += int(REAP_SEED_FRACTION * SEED_PACKETS_USED["potato"])
+
 
             low, high = YIELD_RANGE[ctype]
             yield_amount = random.randint(low, high)
@@ -402,7 +548,33 @@ def complete_reap_task(name, task_package):
 
     joined_msg = ", ".join(harvest_parts)
 
-    return_msg = get_message("reap", "harvest_complete", target=name, items=joined_msg)
+    # Now update the seeds, generated by reaping
+    stash = next((r for r in resources if r["name"] == "SeedStash"), None)
+    if not stash:
+        return_msg = get_message("reap", "no_seedstash")
+        return return_msg, task_package
+
+    seed_parts = []
+    if appleseeds > 0:
+        stash["apple"] += appleseeds
+        seed_parts.append(f"{appleseeds} apple seeds")
+    if cabbageseeds > 0:
+        stash["cabbage"] += cabbageseeds
+        seed_parts.append(f"{cabbageseeds} cabbage seeds")
+    if potatoseeds > 0:
+        stash["potato"] += potatoseeds
+        seed_parts.append(f"{potatoseeds} potato seeds")
+
+    seedsmsg = ""
+    if seed_parts:
+        if len(seed_parts) == 1:
+            seedsmsg = f" You have retrieved {seed_parts[0]} from the reaping."
+        elif len(seed_parts) == 2:
+            seedsmsg = f" You have retrieved {seed_parts[0]} and {seed_parts[1]} from the reaping."
+        else:
+            seedsmsg = f" You have retrieved {seed_parts[0]}, {seed_parts[1]} and {seed_parts[2]} from the reaping."
+
+    return_msg = get_message("reap", "harvest_complete", target=name, items=joined_msg, seedsmsg=seedsmsg)
 
     # Clear the task
     humans, droids = clear_task_for_character(name, "", humans, droids)
@@ -432,6 +604,11 @@ def complete_mine_task(name, task_package):
     crystal_store["red"] += red
     crystal_store["indigo"] += indigo
     crystal_store["gold"] += gold
+
+    # Add to the 'total_found' tally, as later these might be processed for various reasons (power, shield, other?) 
+    crystal_store["total_found"]["red"] += red
+    crystal_store["total_found"]["indigo"] += indigo
+    crystal_store["total_found"]["gold"] += gold
 
     return_msg = get_message("mine", "completed", name=name, red=red, indigo=indigo, gold=gold)
     
@@ -497,6 +674,10 @@ def complete_assign_process_task(name, task_package):
     crystal_store["indigo"] -= indigo
     crystal_store["gold"] -= gold
 
+    crystal_store["processed"]["red"] += red
+    crystal_store["processed"]["indigo"] += indigo
+    crystal_store["processed"]["gold"] += gold
+
     total_units = red + indigo + gold
     return_msg = get_message("assign", "process_completed", name=name, item=item_name, total_units=total_units)
 
@@ -511,13 +692,15 @@ def complete_assign_shieldmanual_task(name, task_package):
     humans = task_package["humans"]
     droids = task_package["droids"]
     return_msg = ""
+    is_human = name in humans
+    pronouns = get_pronouns(name, is_human=is_human)
 
     # 1. Check for DecodeKey in resources
     decode_key = next((r for r in resources if r["name"] == "DecodeKey"), None)
     shield_manual = next((r for r in resources if r["name"] == "ShieldManual"), None)
 
     if not decode_key:
-        return_msg = get_message("shield", "no_decode", name=name)
+        return_msg = get_message("shield", "no_decode", name=name, pronoun=pronouns["p1"].lower())
         humans, droids = clear_task_for_character(name, "ShieldManual", humans, droids)   # Clear the task
         return return_msg, task_package
 
@@ -540,36 +723,16 @@ def complete_assign_shieldmanual_task(name, task_package):
 
 
 def complete_refuel_task(name, task_package):
-    resources = task_package["resources"]
     return_msg = ""
+    total_power = 0
+    humans = task_package["humans"]
+    droids = task_package["droids"]
 
-    power_supply = next((r for r in resources if r.get("name") == "PowerSupply"), None)
-    if not power_supply:
-        return_msg = get_message("refuel", "no_power_supply")
-        humans, droids = clear_task_for_character(name, "", humans, droids)  # Clear the task
+    amount_only = True
+    return_msg, total_power, task_package, red, indigo, gold = choose_vials_and_display_power_produced(name, task_package, amount_only=amount_only)
+    if return_msg != "":    # in other words, there was an error gettting the total power
+        humans, droids = clear_task_for_character(name, "", humans, droids)  # Clear the task despite the error
         return return_msg, task_package
-
-    vial_store = power_supply.get("VialStore", {})
-    if not vial_store or all(v == 0 for v in vial_store.values()):
-        return_msg = get_message("refuel", "no_vials_fail", name=name)
-        humans, droids = clear_task_for_character(name, "", humans, droids)  # Clear the task
-        return return_msg, task_package
-
-    red = vial_store.get("red", 0)
-    indigo = vial_store.get("indigo", 0)
-    gold = vial_store.get("gold", 0)
-
-    total_power = (
-        red * POWER_PER_RED +
-        indigo * POWER_PER_INDIGO +
-        gold * POWER_PER_GOLD
-    )
-
-    # Apply
-    power_supply["amount"] += total_power
-    vial_store["red"] = 0
-    vial_store["indigo"] = 0
-    vial_store["gold"] = 0
 
     return_msg = get_message("refuel", "completed", name=name, power=total_power)
     humans, droids = clear_task_for_character(name, "", humans, droids)  # Clear the task
@@ -580,14 +743,14 @@ def complete_refuel_task(name, task_package):
 def choose_droid_with_ancient_code(resources, droids, shieldstate, turns_elapsed):
     eligible_droids = list(droids.keys())
     if not eligible_droids:
-        log_and_display(get_message("shield", "no_droid_with_code"), turns_elapsed)
+        msg_shield(get_message("shield", "no_droid_with_code"), turns_elapsed)
         return resources, droids, shieldstate
 
     chosen_droid = random.choice(eligible_droids)
     droids[chosen_droid]["AncientCode"] = True
 
     msg = f"Inside the Shield Manual you see firmware specs — rare, old ones. You try each of your droids, and you are fortunate that the only droid that has a matching code is {chosen_droid}. This droid needs to be assigned to the Shield for it to work."
-    log_and_display(msg, turns_elapsed)
+    msg_shield(msg, turns_elapsed)
 
     # Set the message inside the item - for display
     ancient_code = next((r for r in resources if r.get("name") == "AncientDroidCode"), None)
@@ -607,19 +770,20 @@ def define_crystal_combination(resources, shieldstate, turns_elapsed):
             item["gold"] = random.randint(1, 10)
             msg = f"This professionally typed booklet describes the correct combination of crystals to make the shield operate effectively: {item['red']} red, {item['indigo']} indigo, and {item['gold']} gold crystals."
             item_found = True
-            log_and_display(msg, turns_elapsed)
+            msg_shield(msg, turns_elapsed)
             break
 
     if not item_found:
-        log_and_display(get_message("shield", "no_combo_found"), turns_elapsed)
+        msg_shield(get_message("shield", "no_combo_found"), turns_elapsed, tone="warn")
         return resources, shieldstate
     
     # Count available crystals (assuming you track this way)
     available_crystals = get_available_crystals(resources)
     if item["red"] > available_crystals.get("red",0) or item["indigo"] > available_crystals.get("indigo",0) or item["gold"] > available_crystals.get("gold",0):
-        log_and_display(get_message("shield", "not_enough_crystals", 
+        msg_shield(get_message("shield", "not_enough_crystals", 
                                     need_R=item["red"], need_I=item["indigo"], need_G=item["gold"], 
-                                    have_R=available_crystals.get("red",0), have_I=available_crystals.get("indigo",0), have_G=available_crystals.get("gold",0)), turns_elapsed)
+                                    have_R=available_crystals.get("red",0), have_I=available_crystals.get("indigo",0), have_G=available_crystals.get("gold",0)),
+                                    turns_elapsed, tone="error")
 
     return resources, shieldstate
 
@@ -634,3 +798,16 @@ def get_available_crystals(resources):
                 available_crystals["indigo"] = crystal_store["indigo"]
                 available_crystals["gold"] = crystal_store["gold"]
     return available_crystals
+
+
+def complete_towing_task(name, task_package):
+    tasks = task_package["tasks"]
+    return_msg = ""
+
+    task_id, task = get_task_by_worker(tasks, name)
+    droid_to_be_charged = task["item_name"]
+
+    task_package = initiate_charge_task(droid_to_be_charged, task_package)
+    return_msg = get_message("charge", "tow_successful", name=name, droid_towed=droid_to_be_charged)
+
+    return return_msg, task_package

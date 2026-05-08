@@ -153,6 +153,7 @@ RESOURCES = [
         "prob": 0.85,
         "found": False,
         "amount": 0,
+        "decoded": False,       # Unique field to this item
         "msg": "Hmm, it's an old book of sorts. You can't understand the symbols on it. Someone is going to need to decode this.",
     },
     {
@@ -265,7 +266,7 @@ REPLACEMENT = [
         "examine_turns": 4,
         "replaces": "PowerSupply",
         "found": False,
-        "msg": "A bunch of one-third effective Shockley-Queisser solar panels that will give you some augmentation to your existing power needs."
+        "msg": "A bunch of one-third-effective Shockley-Queisser solar panels that will give you some augmentation to your existing power needs."
     },
     {
         "name": "CrystalMortarAndPestle",
@@ -276,7 +277,7 @@ REPLACEMENT = [
         "examine_turns": 1,
         "replaces": "CrystalProcessor",
         "found": False,
-        "msg": "A dual purpose item. 1. It turns crystals into crystal dust and 2. Provides anger management therapy for you or one of your humans.",
+        "msg": "A dual purpose item. 1. It turns crystals into crystal dust and 2. Provides anger management therapy for one of your humans. Bashing away with a pseudo-hammer: fun!",
     },
     {
         "name": "SelfPoweringStoveAndPot",
@@ -344,110 +345,6 @@ REPLACEMENT = [
         "found": False,
         "msg": "A mysterious note in some sort of obscure language. You will have to give this to one of the droids and hope that they know this language. Or ask Arylss and Cindlyss. Likely they might know.",
     },
-]
-
-# Plato's Tarot Cards - should be included with the Novelty Items
-TAROT = [
-    {
-        "name": "PlatoTarot_TheHermit",
-        "category": "tarot",
-        "category_counter": 1,
-        "examinable": True,
-        "examined": False,
-        "examine_turns": 3,
-        "found": False,
-        "isCritical": False,
-        "msg": (
-            "A solitary figure holding a faint blue lantern. The card hums softly when "
-            "you touch it. Scribbled beneath the image are the words: "
-            "'Seek the silent one. One alone knows the path to light the sky.'\n"
-            "Lanemu whispers: 'This may speak of the one droid whose firmware can "
-            "truly awaken the shield.'"
-        )
-    },
-    {
-        "name": "PlatoTarot_TheTower",
-        "category": "tarot",
-        "category_counter": 2,
-        "examinable": True,
-        "examined": False,
-        "examine_turns": 3,
-        "found": False,
-        "isCritical": False,
-        "msg": (
-            "Lightning strikes a tall obsidian structure. At the base you see "
-            "fragments of carved symbols, impossible to read by eye. "
-            "'All falls apart unless the inner code is understood,' the caption reads.\n"
-            "Lanemu murmurs: 'This may hint at decoding the ancient manual… not all is "
-            "obvious in the ShieldManual.'"
-        )
-    },
-    {
-        "name": "PlatoTarot_TheStar",
-        "category": "tarot",
-        "category_counter": 3,
-        "examinable": True,
-        "examined": False,
-        "examine_turns": 3,
-        "found": False,
-        "isCritical": False,
-        "msg": (
-            "A robed figure kneels beneath three glowing stars—red, indigo, and gold—"
-            "arranged in a precise geometry. "
-            "'Three lights, one pattern. Align them, and truth emerges.'\n"
-            "Lanemu quietly says: 'This may whisper of crystal ratios and harmonics… "
-            "listen well.'"
-        )
-    },
-    {
-        "name": "PlatoTarot_TheChariot",
-        "category": "tarot",
-        "category_counter": 4,
-        "examinable": True,
-        "examined": False,
-        "examine_turns": 3,
-        "found": False,
-        "isCritical": False,
-        "msg": (
-            "A sleek, otherworldly machine glides across a barren plain, powered "
-            "not by wheels but by shifting currents of light. "
-            "'Direction matters. Momentum matters more.'\n"
-            "Lanemu observes: 'This may nudge you toward the sequence needed to "
-            "initiate dormant systems… like the Shield itself.'"
-        )
-    },
-    {
-        "name": "PlatoTarot_Judgement",
-        "category": "tarot",
-        "category_counter": 5,
-        "examinable": True,
-        "examined": False,
-        "examine_turns": 3,
-        "found": False,
-        "isCritical": False,
-        "msg": (
-            "A horn sounds from a distant silver horizon. Silhouettes rise from the "
-            "ground, startled awake. "
-            "'When the call comes, only readiness determines fate.'\n"
-            "Lanemu warns: 'This is an omen of approaching presence… the MGC does not "
-            "delay forever.'"
-        )
-    },
-    {
-        "name": "PlatoTarot_TheSun",
-        "category": "tarot",
-        "category_counter": 6,
-        "examinable": True,
-        "examine_turns": 3,
-        "found": False,
-        "isCritical": False,
-        "msg": (
-            "A radiant sphere rises over crystalline fields. Warm, fierce, undeniable. "
-            "Beneath it: 'Illumination breaks all shadows.'\n"
-            "Lanemu smiles softly: 'This card may point to the final revelation—"
-            "the moment when all preparations meet purpose.'"
-        )
-    }
 ]
 
 # Novelty items 6 in total
@@ -806,7 +703,7 @@ JUNK = [
         "examined": False,
         "examine_turns": 0,
         "found": False,
-        "msg": "This book is probably a 8 inches thick. Someone took the time to write a ridiculously long treatise on how to make money. What good is that here? Useful for starting lots of fires. That's about it."
+        "msg": "This book is probably 8 inches thick. Someone took the time to write a ridiculously long treatise on how to make money. What good is that here? Useful for starting lots of fires. That's about it."
     },
     {
         "name": "PlasticToyTank",
@@ -1078,6 +975,46 @@ JUNK = [
         "found": False,
         "msg": "This looks *so* good you decide to wear it around the Outpost for a while. Karla is giving you funny looks. Maybe you ARE a bit unhinged."
     },
+    {
+        "name": "WheelOfMisfortuneBoardGame",
+        "category": "junk",
+        "category_counter": 57,
+        "examinable": True,
+        "examined": False,
+        "examine_turns": 0,
+        "found": False,
+        "msg": "A board game where 'something bad happens on every turn', according to the writing on the box. Maybe Terry might like this? You're not sure anyone else would."
+    },
+    {
+        "name": "OldMattress",
+        "category": "junk",
+        "category_counter": 58,
+        "examinable": True,
+        "examined": False,
+        "examine_turns": 0,
+        "found": False,
+        "msg": "This mattress is mouldy, dirty and disgusting. Burning it would only make it worse. Burying it would be sacrilege. The only option you have is 'hide it out the back somewhere'."
+    },
+    {
+        "name": "WrestlingHeadband",
+        "category": "junk",
+        "category_counter": 59,
+        "examinable": True,
+        "examined": False,
+        "examine_turns": 0,
+        "found": False,
+        "msg": "This terry towelling face adornment simply has the word 'WRESTLE!' in an embarassing Sans font, five times around it's perimeter. This one is definitely going in a fire at some stage."
+    },
+    {
+        "name": "IntimatesTrimmer",
+        "category": "junk",
+        "category_counter": 60,
+        "examinable": True,
+        "examined": False,
+        "examine_turns": 0,
+        "found": False,
+        "msg": "The origin and hygeine of this thing is doubtful. In both cases. This needs to be disposed of, forthwith."
+    },
 ]
 
 
@@ -1092,7 +1029,6 @@ ALL_ITEMS.extend(CHAIN)
 ALL_ITEMS.extend(REPLACEMENT)
 ALL_ITEMS.extend(NOVELTY)
 ALL_ITEMS.extend(JUNK)
-ALL_ITEMS.extend(TAROT)
 
 # Map from name -> template dict
 ITEM_DB = {item["name"]: item for item in ALL_ITEMS}
