@@ -1,9 +1,12 @@
 # planting.py
 
 import random
-from constants import SERVING_VALUE, HYDROPONICS_BED_MIN, HYDROPONICS_BED_MAX, SEED_PACKETS_USED, TASK_PLANTING, FOOD_PER_DAY, NUM_HUMANS
+from command_utils import create_task
+from constants import SERVING_VALUE, HYDROPONICS_BED_MIN, HYDROPONICS_BED_MAX, SEED_PACKETS_USED, TASK_PLANTING, FOOD_PER_DAY, NUM_HUMANS, TASK_LENGTH
 from lore.lore_ingame import get_message
+import lore.user_interface as ui_runtime
 from lore.user_interface import get_input, msg_plant, msg_food
+from queuing import is_idle, add_to_queue
 from status import display_character_summary
 from utils import process_hunger_status, can_character_act, get_pronouns
 
@@ -270,22 +273,74 @@ def get_bed_by_id(hydro, bed_id):
     return next((b for b in hydro["beds"] if b["id"] == bed_id), None)
 
 
-def determine_what_to_plant_and_where(raw_target, crops, resources, humans, droids, turns_elapsed):
-    VALID_CROPS = ["apple", "cabbage", "potato"]
-    plant_options = []
+def determine_what_to_plant_and_where(raw_target, task_package):
     task_type = TASK_PLANTING
+
+    context = {
+        "raw_target": raw_target,
+        "task_package": task_package,
+        "from_gui_callback": False,
+    }
+
+    humans = task_package["humans"]
+    droids = task_package["droids"]
+    turns_elapsed = task_package["counters"]["turns"]
 
     # 1. Get worker name
     if not raw_target:
         display_character_summary(humans, droids, task_type, turns_elapsed)
-        raw_target = get_input("input", "plant", turns_elapsed)
 
-    okay_to_act, is_human, worker_name = can_character_act(raw_target, task_type, humans, droids, turns_elapsed)
+        if ui_runtime.UI_MODE == "gui" and ui_runtime.ACTIVE_UI is not None:
+            context["from_gui_callback"] = True
+            ui_runtime.ACTIVE_UI.set_pending_question(
+                callback=resume_plant_worker_selected,
+                context=context
+            )
+
+        answer = get_input("plant", "who_plants", turns_elapsed)
+
+        if answer == ui_runtime.GUI_PENDING:
+            return False, None, None, task_package
+
+        context["raw_target"] = answer
+        return continue_determine_what_to_plant_and_where(context)
+
+    return continue_determine_what_to_plant_and_where(context)
+
+
+def resume_plant_worker_selected(answer, context):
+    context["raw_target"] = answer
+    context["from_gui_callback"] = True
+    return continue_determine_what_to_plant_and_where(context)
+
+
+def continue_determine_what_to_plant_and_where(context):
+    VALID_CROPS = ["apple", "cabbage", "potato"]
+    task_type = TASK_PLANTING
+
+    task_package = context["task_package"]
+    raw_target = context["raw_target"]
+
+    crops = task_package["crops"]
+    resources = task_package["resources"]
+    humans = task_package["humans"]
+    droids = task_package["droids"]
+    turns_elapsed = task_package["counters"]["turns"]
+
+    okay_to_act, is_human, worker_name = can_character_act(raw_target, task_type, humans, droids, turns_elapsed )
+
     if not okay_to_act:
-        return False, None, None, resources
+        return return_plant_failure(context)
 
-    # 2. Resource display and checks
+    context["worker_name"] = worker_name
+    context["is_human"] = is_human
+
     food_store = next((r for r in resources if r.get("name") == "FoodStore"), None)
+
+    if not food_store:
+        msg_plant("No FoodStore found.", turns_elapsed, tone="error")
+        return return_plant_failure(context)
+
     food_lines = [
         "FOOD IN STORAGE:",
         f"  Ration Packs: {food_store.get('rationPack', 0)}",
@@ -293,7 +348,6 @@ def determine_what_to_plant_and_where(raw_target, crops, resources, humans, droi
         f"  Soup servings: {food_store.get('soup', 0)}  Stir Fries: {food_store.get('stirFry', 0)}  Smoothies: {food_store.get('smoothie', 0)}"
     ]
 
-    # Crop status
     if crops:
         crop_lines = ["CROPS:"]
         for crop in crops.values():
@@ -303,22 +357,31 @@ def determine_what_to_plant_and_where(raw_target, crops, resources, humans, droi
     else:
         crop_lines = ["CROPS:  None growing"]
 
-    # Seeds needed per bed
-    seeds_per_bed_msg = f"SEEDS NEEDED PER BED:  Apple: {SEED_PACKETS_USED['apple']}  Cabbage: {SEED_PACKETS_USED['cabbage']}  Potato: {SEED_PACKETS_USED['potato']}"
+    seeds_per_bed_msg = (
+        f"SEEDS NEEDED PER BED:  "
+        f"Apple: {SEED_PACKETS_USED['apple']}  "
+        f"Cabbage: {SEED_PACKETS_USED['cabbage']}  "
+        f"Potato: {SEED_PACKETS_USED['potato']}"
+    )
 
-    # Seed stash check
     seeds = next((r for r in resources if r.get("name") == "SeedStash"), None)
+
     if not seeds:
         msg_plant(get_message("plant", "no_seedstash"), turns_elapsed, tone="error")
-        return False, None, None, resources
+        return return_plant_failure(context)
 
-    seed_msg = f"AVAILABLE SEEDS:  Apple: {seeds.get('apple', 0)}  Cabbage: {seeds.get('cabbage', 0)}  Potato: {seeds.get('potato', 0)}"
+    seed_msg = (
+        f"AVAILABLE SEEDS:  "
+        f"Apple: {seeds.get('apple', 0)}  "
+        f"Cabbage: {seeds.get('cabbage', 0)}  "
+        f"Potato: {seeds.get('potato', 0)}"
+    )
 
-    # Hydroponics + free beds
     hydro = next((r for r in resources if r.get("name") == "HydroponicsRoom"), None)
+
     if not hydro:
         msg_plant(get_message("plant", "no_hydro"), turns_elapsed, tone="error")
-        return False, None, None, resources
+        return return_plant_failure(context)
 
     beds = hydro.get("beds", [])
     available_beds = [b for b in beds if not b["occupied"] and not b["reserved"]]
@@ -326,75 +389,196 @@ def determine_what_to_plant_and_where(raw_target, crops, resources, humans, droi
 
     if free_beds == 0:
         msg_plant(get_message("plant", "no_beds"), turns_elapsed, tone="warn")
-        return False, None, None, resources
+        return return_plant_failure(context)
 
     free_beds_msg = f"FREE BEDS AVAILABLE FOR PLANTING: {free_beds}"
 
-    # 3. Display summary and prompt
-    full_planting_msg = "\n".join(
-        crop_lines + [seeds_per_bed_msg, seed_msg, free_beds_msg] + food_lines
-    )
+    full_planting_msg = "\n".join(crop_lines + [seeds_per_bed_msg, seed_msg, free_beds_msg] + food_lines)
+
     msg_plant(full_planting_msg, turns_elapsed, tone="success")
 
-    crops_requested = []
-    num_beds_needed = 0
+    context["VALID_CROPS"] = VALID_CROPS
+    context["available_beds"] = available_beds
+    context["free_beds"] = free_beds
 
     if free_beds >= 3:
-        response = get_input("input", "plant_default", turns_elapsed)
-        if response.lower() in ["y", "yes"]:
-            plant_options.append("default")
+        if ui_runtime.UI_MODE == "gui" and ui_runtime.ACTIVE_UI is not None:
+            context["from_gui_callback"] = True
+            ui_runtime.ACTIVE_UI.set_pending_question(
+                callback=resume_plant_default,
+                context=context
+            )
 
-    if not plant_options:
-        try:
-            num_beds_needed = int(get_input("input", "plant_how_many", turns_elapsed, available=free_beds))
-        except ValueError:
-            msg_plant(get_message("plant", "invalid_response", free_beds=free_beds), turns_elapsed, tone="error")
-            return False, None, None, resources
+        response = get_input("plant", "default", turns_elapsed)
 
-        if num_beds_needed == 0:   # They wish to abort
-            return False, None, None, resources
+        if response == ui_runtime.GUI_PENDING:
+            return None
 
-        if num_beds_needed < 0 or num_beds_needed > free_beds:
-            msg_plant(get_message("plant", "invalid_response", free_beds=free_beds), turns_elapsed, tone="error")
-            return False, None, None, resources
+        return resume_plant_default(response, context)
 
-        crops_requested = get_input("input", "plant_which_crop", turns_elapsed).lower().split()
-        if crops_requested == {} or crops_requested == "":
-            msg_plant(get_message("plant", "unknown_crop", crop=crop), turns_elapsed, tone="error")
-            return False, worker_name, None, resources
-        
-        for crop in crops_requested:
-            if crop == "" or crop not in VALID_CROPS:
-                msg_plant(get_message("plant", "unknown_crop", crop=crop), turns_elapsed, tone="error")
-                return False, worker_name, None, resources
+    return ask_plant_how_many(context)
 
-    # 4. Build planting instructions
-    if plant_options and plant_options[0] == "default":
-        crops_requested = VALID_CROPS[:]
-        num_beds_needed = 3
+
+def return_plant_failure(context):
+    task_package = context["task_package"]
+
+    if context.get("from_gui_callback", False):
+        return task_package
+
+    # This should only be for a CLI run, which we most likely won't need in the future
+    return False, None, None, task_package
+
+
+def resume_plant_default(answer, context):
+    answer = str(answer).strip().lower() if answer else ""
+
+    if answer in ("y", "yes"):
+        context["crops_requested"] = context["VALID_CROPS"][:]
+        context["num_beds_needed"] = 3
+        return finish_planting_selection(context)
+
+    return ask_plant_how_many(context)
+
+
+def ask_plant_how_many(context):
+    task_package = context["task_package"]
+    turns_elapsed = task_package["counters"]["turns"]
+    free_beds = context["free_beds"]
+
+    if ui_runtime.UI_MODE == "gui" and ui_runtime.ACTIVE_UI is not None:
+        context["from_gui_callback"] = True
+        ui_runtime.ACTIVE_UI.set_pending_question(
+            callback=resume_plant_how_many,
+            context=context
+        )
+
+    response = get_input("plant", "how_many", turns_elapsed, available=free_beds)
+
+    if response == ui_runtime.GUI_PENDING:
+        return None
+
+    return resume_plant_how_many(response, context)
+
+
+def resume_plant_how_many(answer, context):
+    task_package = context["task_package"]
+    turns_elapsed = task_package["counters"]["turns"]
+    free_beds = context["free_beds"]
+
+    try:
+        num_beds_needed = int(answer)
+    except (TypeError, ValueError):
+        msg_plant(get_message("plant", "invalid_response", free_beds=free_beds), turns_elapsed, tone="error")
+        return return_plant_failure(context)
+
+    if num_beds_needed == 0:
+        return return_plant_failure(context)
+
+    if num_beds_needed < 0 or num_beds_needed > free_beds:
+        msg_plant(get_message("plant", "invalid_response", free_beds=free_beds), turns_elapsed, tone="error")
+        return return_plant_failure(context)
+
+    context["num_beds_needed"] = num_beds_needed
+
+    return ask_plant_which_crop(context)
+
+
+def ask_plant_which_crop(context):
+    task_package = context["task_package"]
+    turns_elapsed = task_package["counters"]["turns"]
+
+    if ui_runtime.UI_MODE == "gui" and ui_runtime.ACTIVE_UI is not None:
+        context["from_gui_callback"] = True
+        ui_runtime.ACTIVE_UI.set_pending_question(
+            callback=resume_plant_which_crop,
+            context=context
+        )
+
+    response = get_input("plant", "which_crop", turns_elapsed)
+
+    if response == ui_runtime.GUI_PENDING:
+        return None
+
+    return resume_plant_which_crop(response, context)
+
+
+def resume_plant_which_crop(answer, context):
+    task_package = context["task_package"]
+    turns_elapsed = task_package["counters"]["turns"]
+    worker_name = context["worker_name"]
+    VALID_CROPS = context["VALID_CROPS"]
+
+    if not answer:
+        msg_plant(get_message("plant", "unknown_crop", crop=""), turns_elapsed, tone="error")
+        return return_plant_failure(context)
+
+    crops_requested = str(answer).lower().split()
+
+    if not crops_requested:
+        msg_plant(get_message("plant", "unknown_crop", crop=""), turns_elapsed, tone="error")
+        return return_plant_failure(context)
+
+    for crop in crops_requested:
+        if crop not in VALID_CROPS:
+            msg_plant(get_message("plant", "unknown_crop", crop=crop), turns_elapsed, tone="error" )
+            return return_plant_failure(context)
+
+    context["crops_requested"] = crops_requested
+
+    return finish_planting_selection(context)
+
+
+def finish_planting_selection(context):
+    task_package = context["task_package"]
+
+    worker_name, crop_instructions, task_package = build_planting_instructions(context)
+
+    if context.get("from_gui_callback", False):
+        valid_command, task_package = finish_initiate_plant_task(
+            name=worker_name,
+            crop_instructions=crop_instructions,
+            task_package=task_package,
+            queued_task=False
+        )
+        return task_package
+
+    return True, worker_name, crop_instructions, task_package
+
+
+def build_planting_instructions(context):
+    task_package = context["task_package"]
+    worker_name = context["worker_name"]
+    available_beds = context["available_beds"]
+    crops_requested = context["crops_requested"]
+    num_beds_needed = context["num_beds_needed"]
 
     beds_to_reserve = available_beds[:num_beds_needed]
+
     for bed in beds_to_reserve:
         bed["reserved"] = True
         bed["reserved_by"] = worker_name
 
     planting_orders = []
+
     beds_per_crop = num_beds_needed // len(crops_requested)
     extra = num_beds_needed % len(crops_requested)
 
     bed_index = 0
+
     for crop in crops_requested:
         beds_for_this_crop = beds_to_reserve[bed_index: bed_index + beds_per_crop]
         bed_index += beds_per_crop
+
         planting_orders.append({
             "crop": crop,
             "beds": beds_for_this_crop
         })
 
-    # Distribute any leftover beds
     if extra > 0:
         for i in range(extra):
-            planting_orders[i % len(planting_orders)]["beds"].append(beds_to_reserve[bed_index])
+            planting_orders[i % len(planting_orders)]["beds"].append(
+                beds_to_reserve[bed_index]
+            )
             bed_index += 1
 
     instructions = {
@@ -402,4 +586,36 @@ def determine_what_to_plant_and_where(raw_target, crops, resources, humans, droi
         "orders": planting_orders
     }
 
-    return True, worker_name, instructions, resources
+    return worker_name, instructions, task_package
+
+
+def finish_initiate_plant_task(name, crop_instructions, task_package, queued_task=False):
+    humans = task_package["humans"]
+    droids = task_package["droids"]
+    turns_elapsed = task_package["counters"]["turns"]
+    task_type = TASK_PLANTING
+    valid_command = True
+    
+    # --- Inline functions ported from commands.py to avoid circular references ---
+    def set_task_length(task_type):
+        low, high = TASK_LENGTH[task_type]
+        return random.randint(low, high)
+
+    task_package["task_data"] = crop_instructions
+
+    is_human = name in humans
+    duration = set_task_length("plant_human") if is_human else set_task_length("plant_droid")
+
+    # If they are not idle, and this was not a queued task, add this action to their queue
+    if not is_idle(name, humans, droids) and not queued_task:
+        humans, droids = add_to_queue(name, humans, droids, turns_elapsed, task_type, task_data=crop_instructions )
+        return valid_command, task_package
+
+    return_msg, task_package = create_task(name, task_type, duration, task_package)
+    msg_plant(return_msg, turns_elapsed)
+
+    # Now that the task has been created, we can clear the task_data in task_package 
+    # because this data is now in the task
+    task_package["task_data"] = {}
+
+    return valid_command, task_package

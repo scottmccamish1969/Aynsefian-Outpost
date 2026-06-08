@@ -82,12 +82,12 @@ class OutpostUI:
 
         self.state_text = tk.Text(
             self.state_frame,
-            wrap="word",
+            wrap="none",
             state="disabled",
             font=("Courier New", 11),
             padx=8,
             pady=8,
-            width=40
+            width=60
         )
         self.state_text.grid(row=0, column=0, sticky="nsew")
 
@@ -102,9 +102,11 @@ class OutpostUI:
         # --- Bottom command entry -------------------------------------------
         self.bottom_frame.columnconfigure(1, weight=1)
 
+        self.command_prompt_var = tk.StringVar(value="What is your next action?")
+
         self.command_label = ttk.Label(
             self.bottom_frame,
-            text="Command:",
+            textvariable=self.command_prompt_var,
             font=("Courier New", 11, "bold")
         )
         self.command_label.grid(row=0, column=0, sticky="w", padx=(0, 8))
@@ -157,6 +159,12 @@ class OutpostUI:
         # callback should be a function taking one argument: command (str)
         self.command_callback = callback
 
+    def set_command_prompt(self, text):
+        self.command_prompt_var.set(text)
+
+    def clear_command_prompt(self):
+        self.command_prompt_var.set("What is your next action?")
+
     # ----------------------------------------------------------------------
     # Question handling methods
     # ----------------------------------------------------------------------
@@ -178,13 +186,13 @@ class OutpostUI:
         command = self.command_entry.get().strip()
         if not command:
             return
-
+        
         self.clear_command_entry()
-
         if self.pending_question is not None:
             callback = self.pending_question["callback"]
             context = self.pending_question.get("context", {})
             self.clear_pending_question()
+            self.clear_command_prompt()
             updated_task_package = callback(command, context)
 
             if updated_task_package is not None:
@@ -248,7 +256,8 @@ def get_top_bar_data(task_package):
     }
 
 
-def get_state_panel_text(task_package):
+# Legacy function - keep for now but consider deleting. Has been replaced within status.py.
+def old_get_state_panel_text(task_package):
     humans = task_package.get("humans", {})
     droids = task_package.get("droids", {})
     crops = task_package.get("crops", {})

@@ -3,28 +3,71 @@ import random
 
 import sys
 import os
+import json
+import lore.user_interface as ui_runtime
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 
-from constants import INITIAL_GAMESTATE
-from lore.user_interface import msg_story, log_and_display
+from constants import INITIAL_GAMESTATE, CONFIG_FILE
+from lore.lore_ingame import print_commands
+from lore.user_interface import msg_story, get_input
 
 def print_orders(gamestate):
     # This is the opening message (from President Axin) the NEW player gets at game start for the first time
     if gamestate == INITIAL_GAMESTATE:
-        log_and_display("", 0)      # Blank line to start
-        msg_story(get_story_message("orders", "first_time"), 0, end='')
-        answer = input(">> ").strip().lower() 
-        if answer == 'y':
-            message = get_story_message("orders", "message")
-            # If the message is a list of lines, print them one by one
-            if isinstance(message, list):
-                for line in message:
-                    msg_story(line, 0)
-            # Otherwise, just print the whole thing
-            else:
-                msg_story(message, 0)
+        if ui_runtime.UI_MODE == "gui" and ui_runtime.ACTIVE_UI is not None:
+                ui_runtime.ACTIVE_UI.set_pending_question(
+                    callback=resume_printing_orders,
+                    context={
+                        "task_package": {},
+                        "first_time": True
+                    }
+                )
+        answer = get_input("input", "first_time", 0)
+        if answer and answer == ui_runtime.GUI_PENDING:
+            return None
+
+
+def resume_printing_orders(answer, context):
+
+    # Local copy, to avoid circular references
+    def local_save_config(task_package):
+        try:
+            with open(CONFIG_FILE, "r") as f:
+                data = json.load(f)
+        except (FileNotFoundError, json.JSONDecodeError):
+            data = {}
+
+        keys_to_save = ["crops", "droids", "gamestate", "humans", "item", "resources",  "shieldstate", "tasks", "task_data", "counters"]
+
+        for key in keys_to_save:
+            if key in task_package:
+                data[key] = task_package[key]
+
+        with open(CONFIG_FILE, "w") as f:
+            json.dump(data, f, indent=4)
+
+    task_package = context["task_package"]
+    first_time = context["first_time"]
+    turns_elapsed = 0
+    if not first_time:
+        turns_elapsed = task_package["counters"]["turns"]
+
+    if answer and answer and answer.lower() in ("y", "yes"):
+        message = get_story_message("orders", "message")
+        # If the message is a list of lines, print them one by one
+        if isinstance(message, list):
+            for line in message:
+                msg_story(line, 0)
+        # Otherwise, just print the whole thing
         else:
-            msg_story(get_story_message("orders", "chose_not_to"), 0)
+            msg_story(message, 0)     
+
+        msg_story(get_story_message("start", "opening_message"), turns_elapsed)
+        print_commands(turns_elapsed)
+    else:
+        msg_story(get_story_message("orders", "chose_not_to"), 0)
+    
+    local_save_config(task_package)
 
 
 # The core of the lore
@@ -166,7 +209,7 @@ def get_story_message(category, code, **kwargs):
             "fail": "You did you best, Commander. Maybe events just conspired against you. Give it another try?",
         },
         "start": {
-            "opening_message": "\nYou are in charge of this outpost, Commander. It will protect all of Aynsefian.\nYou must keep it running, or we will all die at the hands of the MGC. Please don't fail us!\n"
+            "opening_message": "You are in charge of this outpost, Commander. It will protect all of Aynsefian.\nYou must keep it running, or we will all die at the hands of the MGC. Please don't fail us!\n"
         }
     }
 

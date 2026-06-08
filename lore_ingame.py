@@ -21,25 +21,24 @@ def print_commands(turns):
 
 def print_help(gamestate, turns_elapsed):
     help_texts = {
+        "cancel": "Cancel an existing or queued task for a character",
         "charge": "Charge a droid by name",
         "examine": "Examine something found",
         "explore": "Send a human or droid to explore",
         "feed": "Give a human some food",
+        "help": "Show this help text",
+        "next": "Advance to the next turn without doing anything",
+        "quit": "Leave the outpost to decay and ruin and doom Aynsefian in the process",
+        "read": "Read documents you have found",
+        "replace": "Replace a character's current task with something else",
+        "reset": "Start again from scratch",
         "list": "List various things relating to the Outpost",
         "assign": "Assign a task to someone",
+        "mine": "Mine resources outside the base",
         "plant": "Plant seeds in a hydroponics bay or elsewhere (if available)",
         "reap": "Collect crops that have matured",
-        "mine": "Mine resources outside the base",
-        "read": "Read found documents or logs",
         "refuel": "Refuel the power supply with crystal dust",
         "repair": "Repair broken droids or resources",
-        "manage": "Manage human and droid activity",
-        "next": "Advance to the next turn without doing anything",
-        "read" : "Read a document",
-        "status": "Give the current status of the Outpost",
-        "reset": "Start again from scratch",
-        "help": "Show this help text",
-        "quit": "Leave the outpost to decay and ruin and doom Aynsefian in the process"
     }
 
     msg_help(" List of available commands:", turns_elapsed)
@@ -73,6 +72,17 @@ def get_message(category, code, **kwargs):
             "process_not_enough_crystals": "{name} was assigned to collect {needR} red, {needI} indigo and {needG} gold crystals but there are only {haveR} red, {haveI} indigo and {haveG} gold crystals in storage.",
             "reassigned": "{old} has been relieved of their duties on {item} and now {new} has taken over. {old} appreciates the chance to do something else.",
         },
+        "cancel": {
+            "cannot_interrupt": "{name} is currently {task}. That cannot be interrupted.",
+            "current_cancelled": "{name}'s current task of {task} has been cancelled.",
+            "invalid_choice": "'{choice}' is not a valid cancel option.",
+            "invalid_queue_slot": "'{slot}' is not a valid queued task slot for {name}.",
+            "nothing_to_cancel": "{name} is idle and has no queued tasks, so there is nothing to cancel.",
+            "nothing_current": "{name} has no current task to cancel.",
+            "not_cancelled": "No task cancellation has occurred for {name}.",
+            "no_queued_tasks": "{name} has no queued tasks to cancel.",
+            "queued_cancelled": "{name}'s queued task of {task} in slot {slot} has been removed.",
+        },
         "charge": {
             "charge_above_low": "{target} is not considered low on charge, skipping.",
             "charge_full": [
@@ -84,7 +94,7 @@ def get_message(category, code, **kwargs):
                 "Overcharging protocols engaged. {droid_name} hums quietly in protest… and possibly judgment.",
                 "You hear faint sizzling. {droid_name} may not enjoy being a toaster, Commander."
             ],
-            "commenced": "Charging of {target} has commenced. It will complete in {turns} turns.",
+            "commenced": "Charging of {target} has commenced. It will complete in {turn_msg}.",
             "droid_needs_towing": "{target} is out of charge! They can only be taken to a charging station by a human and there are no idle humans. When one becomes available, they can do it.",
             "getting_low": [
                 "{name} is getting low on charge. Consider hooking them up to the power supply before they stop mid-task.",
@@ -100,7 +110,7 @@ def get_message(category, code, **kwargs):
             "success": "{droid_name} is now re-charged up to {new_charge} units.",
             "task_interrupt": "{name}'s lights flicker and fade. Their charge is exhausted. The {task_type} task they were doing ends where it stands.",
             "tow_successful": "{droid_towed} has been successfully towed by {name} to the charging station and will now be charged back to full power. You feel grateful for the intervention.",
-            "towing": "{name} is now towing {droid_being_towed} to the charging station. They will be done with this task in {turns} turns.",
+            "towing": "{name} is now towing {droid_being_towed} to the charging station. They will be done with this task in {turn_msg}.",
             "wrong_target": [
                 "{target} is asking what the charge is and protests innocence.",
                 "After charging {target}, {pronoun} falls backwards to the ground and are mildly injured.",
@@ -111,16 +121,20 @@ def get_message(category, code, **kwargs):
         },
         "error": {
             "can't_do_that_yet": "The '{command}' command is not yet enabled, Commander. There are a few things you need to do first.",
+            "character_not_found": "DEVELOPER: the character named {name} does not exist.",
             "feed_invalid": "This is an invalid command usage. Choose either:  'feed all', 'feed <name>' or 'feed hungry'.",
-            "invalid_auto_message": "DEVELOPER NOTE: Invalid auto feed / auto charge message for {name}.",
-            "invalid_command": "DEVELOPER NOTE: Invalid command '{command}'",
+            "invalid_auto_message": "DEVELOPER: Invalid auto feed / auto charge message for {name}.",
+            "invalid_command": "DEVELOPER: Invalid command '{command}'",
             "invalid_command_from_function": "DEVELOPER NOTE: Invalid command returned from function - '{action}'.",
             "list_fail": "You cannot list this category of 'things'. Nice try though. A random shot in the dark has worked in other spheres of action.",
-            "no_character": "{name} does not exist, so they cannot be managed. Try again?",
+            "no_character": "{name} does not exist. Try again?",
+            "no_CLI": "DEVELOPER: CLI not supported.",
+            "no_config": "DEVELOPER: The configuration file is not present. Please restart the game.",
             "no_food_store" : "Unfortunately, you have no place in which to store food. This could present problems.",
             "no_items": "You have not found any items yet, so you cannot list anything.",
             "no_power": "Ordinarily it would be a good move using {name} for this {task} task, but since they are out of charge, you can't do it.",
             "no_power_for_assign": "Ordinarily it would be a good assigning {name} to this item, but since they are out of charge, you can't do it.",
+            "no_resume_handler": "DEVELOPER: No resume handler for task type: {task_type}",
             "power_not_found": "POWER STATUS:  No power supply found.",
             "too_hungry": "Poor old {name} simply can't do any {task} until {pronoun} has been give some food!",
             "too_hungry_for_assign": "Poor old {name} simply can't be assigned to any item until {pronoun} has been give some food!",
@@ -138,34 +152,35 @@ def get_message(category, code, **kwargs):
         "examine": {
             "aborted": "Perhaps getting {target} to examine the {item} is the best move. You'll never know because you chose otherwise.",
             "commenced": [
-                "{name} will have a close look at {item}. Don't hold your breath that anything useful will result. You think {pronoun} will need {turns} turns to hopefully do something useful.",
-                "{item} will now face a thorough examination from {name}, for {turns} turns, using what {pronoun} says is a 'fine tooth comb', but you've never seen one of those before.",
-                "Your subordinate ({name}) will now try to understand {item} in {turns} turns or less. Probably not less. Likely that amount. Or more. Perhaps.",
-                "{name} tells you 'don't worry, I've got this covered'. That worries you. Hopefully {item} will still be functional in {turns} turns.",
-                "There will be {turns} turns where {name} is now engaged in trying to comprehend the deeper mysteries of '{item}'. At least {pronoun} won't set fire to anything for that amount of time.",
-                "{name} says: 'It is a far, far better thing that I do, than I have ever done...' You just want answers on '{item}' in {turns} turns. Not Dickens quotes.",
-                "{name} is most likely not trained, qualified or emotionally stable enough to investigate '{item}' for {turns} turns but there's nobody better, so... you decide {pronoun} can do it anyway."
+                "{name} will have a close look at {item}. Don't hold your breath that anything useful will result. You think {pronoun} will need {turn_msg} to hopefully do something useful.",
+                "{item} will now face a thorough examination from {name}, for {turn_msg}, using what {pronoun} says is a 'fine tooth comb', but you've never seen one of those before.",
+                "Your subordinate ({name}) will now try to understand {item} in {turn_msg} or less. Probably not less. Likely that amount. Or more. Perhaps.",
+                "{name} tells you 'don't worry, I've got this covered'. That worries you. Hopefully {item} will still be functional in {turn_msg}.",
+                "There will be {turn_msg} where {name} is now engaged in trying to comprehend the deeper mysteries of '{item}'. At least {pronoun} won't set fire to anything for that amount of time.",
+                "{name} says: 'It is a far, far better thing that I do, than I have ever done...' You just want answers on '{item}' in {turn_msg}. Not Dickens quotes.",
+                "{name} is most likely not trained, qualified or emotionally stable enough to investigate '{item}' for {turn_msg} but there's nobody better, so... you decide {pronoun} can do it anyway."
             ],
             "pause_charging": "{name} has found **{item}**, but they leave it at your feet for the moment while they head off for a much needed charge. You stare it (the {item}), wondering what the heck it is.",
             "pause_eating": "{name} says {pronoun1} is *famished* and will maybe check out the **{item}** when {pronoun1}'s had some food. You can't blame {pronoun2} for this decision. You'd do the same.",
             "invalid_choice": "Please just provide a numbered response from the menu above. '{response}' is not a valid answer.",
             "no_item": "DEVELOPER NOTE: examine task completed but item '{item}' cannot be found!",
             "no_item_name": "DEVELOPER NOTE: examine task completed with no item name!",
+            "not_doing": "You decide that {target} doesn't need to examine anything after all. Perhaps they can paint waterlillies or similar instead?",
             "not_found": "You cannot examine '{item}' as it is not found or not known to exist (yet). Maybe in some parallel universe. But not this one.",
             "nothing_examinable": "There are no items that haven't already been examined. Use 'list resources' to see the status of all items.",
             "reassigned": "{previous} is no longer examining the {item}. This role has been uncermoniously given to {new}.",
         },
         "explore": {
             "commenced": [
-                "{target} has started looking around. Maybe {pronoun} will find something of use in {turns} turns. Or {pronoun} may find nothing.",
-                "You send {target} on a mission from God. Who knows what {pronoun} may turn up in {turns} turns.",
-                "You're not sure if {target} will be remembered as one of the great explorers of human history, but {pronoun}'ll look for something useful in the Outpost for {turns} turns anyway.",
-                "Exploring assigned to {target}. Forlorn hopes of finding something important will end in {turns} turns.",
-                "You have sent {target} wandering aimlessly for {turns} turns. Now go do something else, Commander, and hope for the best.",
-                "Exploration underway. {target} is whistling a tune no one recognises. Results expected in {turns} turns.",
-                "You watch {target} walk off into the haze, mumbling about destiny. You think {pronoun}'ll return in {turns} turns. Probably.",
-                "{target} mutters something about mushrooms, then departs. With any luck, {pronoun}’ll probably check in after {turns} turns.",
-                "You have sent {target} to explore. It's either courage or confusion. Either way, we wait {turns} turns to find out."
+                "{target} has started looking around. Maybe {pronoun} will find something of use in {turn_msg}. Or {pronoun} may find nothing.",
+                "You send {target} on a mission from God. That means it's possible {pronoun} could find something special in {turn_msg}.",
+                "You're not sure if {target} will be remembered as one of the great explorers of human history, but {pronoun}'ll look for something useful in the Outpost for {turn_msg} anyway.",
+                "Exploring assigned to {target}. Forlorn hopes of finding something important will end in {turn_msg}.",
+                "You have sent {target} wandering aimlessly for {turn_msg}. Now go do something else, Commander, and hope for the best.",
+                "Exploration underway. {target} is whistling a tune no one recognises. Results expected in {turn_msg}.",
+                "You watch {target} walk off into the haze, mumbling about destiny. You think {pronoun}'ll return in {turn_msg}. Probably.",
+                "{target} mutters something about mushrooms, then departs. With any luck, {pronoun}’ll probably check in after {turn_msg}.",
+                "You have sent {target} to explore. It's either courage or confusion. Either way, we wait {turn_msg} to find out."
             ],
             "found_food": "{target} has found the FoodStore. It contains a stash of [{amount}] long-life ration packs. Your Outpost will find this particularly useful - in the short term.",
             "not_examined": "{target} chooses to leave {res_name} alone for now. Might be a wise move. Might not be.",
@@ -231,7 +246,7 @@ def get_message(category, code, **kwargs):
             "deceased_warning": "It has been a very long time since {name} had any food. {pronoun} is approaching death from malnutrition. Please do something - if you can. 😟"
         },
         "mine": {
-            "commenced": "The vital task of procuring necessary crystal for power and other things has been given to {target} for {turns} turns. You hope this was a wise decision.",
+            "commenced": "The vital task of procuring necessary crystal for power and other things has been given to {target} for {turn_msg}. You hope this was a wise decision.",
             "started": "You have sent {name} to the CrystalField to mine some vitally important crystals. PPE: On. Pick: Carried. Outcome: Uncertain.",
             "completed": "{name} has returned from the CrystalField with {red} red, {indigo} indigo and {gold} gold crystals.",
             "cannot_store": "DEVELOPER NOTE: Cannot store crystals. PowerSupply does not exist. (This is where they were to be stashed)."
@@ -241,7 +256,7 @@ def get_message(category, code, **kwargs):
         },
         "plant": {
             "bed_occupied": "Cannot plant anything in bed {bed}. It is already being used.",
-            "commenced": "{target} has vanished into the planting area with a packet of seeds and not much else. Hoping for the best is all you can do at this stage.",
+            "commenced": "{target} has vanished into the planting area for {turn_msg} with a packet of seeds and not much else. Hoping for the best is all you can do at this stage.",
             "crop_matured": "🌱 {planter}'s {crop_type} crop in bed #{bed} has matured!",
             "crop_started": "{target} has somehow managed to plant fast growing {crop}s. Use the 'list food' command to view expected yield time(s).",
             "invalid_bed": "DEVELOPER NOTE: Bed {bed} does not exist. ",
@@ -258,15 +273,14 @@ def get_message(category, code, **kwargs):
         },
         "queue": {
             "added": "{character} is currently {current_task}, so the task of {queue_task} has been added to {pronoun} queue.",
-            "auto_charge": "{name} has headed to the charging station to recharge, lest it run out of juice before it completes its next task. It will be fully charged in {turns} turns.",
-            "auto_food": "{name} has gone off for {pronoun1} meal break. {pronoun2} will be back to work in {turns} turns.",
+            "auto_charge": "{name} has headed to the charging station to recharge, lest it run out of juice before it completes its next task. It will be fully charged in {turn_msg}.",
+            "auto_food": "{name} has gone off for {pronoun1} meal break. {pronoun2} will be back to work in {turn_msg}.",
             "cancel_current": "Cancelling current task: {task}.",
             "invalid_option": "Invalid option. Please choose from the menu.",
             "is_now": "--> {pronoun_str} now {task}.",
             "is_now_idle": "--> {pronoun_str} now --Idle--.",
-            "manage_finished": "Finished managing {character}.",
             "no_tasks": "There are no tasks to reorder.",
-            "not_queued": "Could not add {task} to {name}'s queue: it is full. Wait until they finish something first or use 'manage queue'.",
+            "not_queued": "Could not add {task} to {name}'s queue: it is full. Wait until they finish something first or use 'replace' or 'cancel' to modify their tasks.",
             "not_queued_already_queued": "{name} already has a task for {task}. Skipping this queue addition. Eating, Charging and Assigning can only be queued once.",
             "not_queued_error": "DEVELOPER NOTE:  Invalid name '{name}' for queuing.",
             "okay_then_charge": [
@@ -281,11 +295,11 @@ def get_message(category, code, **kwargs):
             ],
             "queue_full": [
                 "{character}'s queue is full and the {task} task cannot be added. Ye gods, man, ease up!  You can check a human or droid's queue by using 'edit queue'.",
-                "{character} has already been loaded up with enough tasks. The {task} task  cannot be added to their queue. Use 'manage queue' to amend {character}'s work schedule.",
+                "{character} has already been loaded up with enough tasks. The {task} task  cannot be added to their queue. Use 'replace' or 'cancel' if you feel the need to modify their tasks.",
                 "There is no more room on {character}'s task queue for any more taskings. You can't add '{task}' until later."
             ],
             "queued": "{name} is busy {now_doing}. {task} has been added to their queued tasks.",
-            "queued_assign": "{name} is busy {now_doing}. The assignment to the {item} has been queued. Queue management is done via the 'manage' command.",
+            "queued_assign": "{name} is busy {now_doing}. The assignment to the {item} has been queued.",
             "queued_examine": "{name} is busy {now_doing}. The examining of the {item} has been queued.",
             "queued_with_item": "{name} is busy {now_doing}. The {task} task relating to the {item} has been queued.",
             "queued_with_task_data": "{name} is busy {now_doing}. The {task} task with these instructions [{task_data}] has been queued.",
@@ -314,9 +328,11 @@ def get_message(category, code, **kwargs):
             ],
             "no_content": "No readable content found for '{subject}'.",
             "no_subject": "There is no '{subject}' file to read at this stage.",
+            "nothing_further": "That is all that this file contains. Time to stop reading things and get that Shield up, Commander.",
+            "quit": "You decide not to read anything. Reading is overrated. No-one ever built anything just by reading."
         },
         "reap": {
-            "commenced": "{target} has gone to find as many mature raw produce items as possible. Wish them well. The Outpost's survival depends on their success. {pronoun} will be back in {turns} turns.",
+            "commenced": "{target} has gone to find as many mature raw produce items as possible. Wish them well. The Outpost's survival depends on their success. {pronoun} will be back in {turn_msg}.",
             "harvest_complete": "{target} has returned from the crops area with {items}. {seedsmsg}",
             "invalid_bed": "DEVELOPER NOTE: crop {crop} has invalid bed {bed}.",
             "no_mature_crops": "{target} has been sent out to collect crops, but nothing is mature yet. Presumably they will ripen very soon and you're just very good at planning.",
@@ -328,7 +344,14 @@ def get_message(category, code, **kwargs):
             "no_seedstash": "DEVELOPER NOTE: Seed stash not located - should not happen.",
             "no_vials_fail": "{name} cannot find any vials of crystal dust to refuel with. Try generating some",
             "no_vials": "You are aiming to send {name} to refuel the PowerSupply, but there are no vials of crystal dust to use for refuelling. You'll need to create some first.",
-        },  
+        },
+        "replace" : {
+            "cannot_interrupt": "{name} is currently {task}, and cannot be interrupted until they are finished. {new_task} has been placed at the top of their work queue.",
+            "invalid_task": "{name} cannot be tasked with {new_task} as this is not a valid task. Try again. Maybe have a stimulant drink if you can find one?",
+            "is_idle": "{name} is currently Idle, so there is nothing to replace. Just task them directly with whatever you want them to do.",
+            "not_replaced": "You decide to leave {name} along for now. It seems they appreciate that sentiment.",
+            "replacing": "Right you are, Commander. {name} will immediately stop {old_task} and go right to {new_task}.",
+        },
         "reset": {
             "start": "Resetting the entire Aynsefian Outpost . . .",
             "done": " . . . the Outpost has been reset.",
@@ -381,7 +404,7 @@ def get_message(category, code, **kwargs):
         entry = random.choice(entry)
     if isinstance(entry, str):
         return entry.format(**kwargs)
-    return "[Message not found]"
+    return f"[Message not found:  {category} - {code}]"
 
 
 used_explore_messages = set()
@@ -411,6 +434,9 @@ def handle_help_command(task_package, qualifier=None, gamestate=None):
     elif qualifier == "charge":
         msg_help(" Droids need to be regularly charged so that they can function effectively.", turns_elapsed)
         msg_help(" To enable charging, just type 'charge', or 'charge <name>' or 'charge all'.", turns_elapsed)
+    elif qualifier == "cancel":
+        msg_help(" Use this command to cancel a queued task, or the current active task.", turns_elapsed)
+        msg_help(" You can either type 'cancel <character>' or just 'cancel' and follow the prompts.", turns_elapsed)
     elif qualifier == "feed":
         msg_help(" Humans will regularly go for food when they're hungry, but they can also be fed manually.", turns_elapsed)
         msg_help(" To feed someone, you can use 'feed', 'feed <name>' or 'feed all'.", turns_elapsed)
@@ -425,9 +451,6 @@ def handle_help_command(task_package, qualifier=None, gamestate=None):
     elif qualifier == "list":
         msg_help(" You can obtain more detailed information about certain aspects of the Outpost via this command.", turns_elapsed)
         msg_help(" This is done via 'list' or 'list <area>', where area is a specific part of the Outpost.", turns_elapsed)
-    elif qualifier == "manage":
-        msg_help(" The 'manage' command is used to modify the current task, or queued tasks, for humans and droids.", turns_elapsed)
-        msg_help(" To manage someone or something, type 'manage' or 'manage <name>'.", turns_elapsed)
     elif qualifier == "mine":
         if gamestate.get("mine", False):
             msg_help(" Now that a crystal field has been found, you can send a human or droid to extract these vital resources.", turns_elapsed)
@@ -455,6 +478,9 @@ def handle_help_command(task_package, qualifier=None, gamestate=None):
             msg_help(" Reaping crops is done via 'reap' or 'reap <name>'.", turns_elapsed)
         else:
             msg_warn(" You can 'reap', but only when you have mature crops.", turns_elapsed)
+    elif qualifier == "replace":
+        msg_help(" Use this command to replace the current task being performed by a human or droid with another task.", turns_elapsed)
+        msg_help(" To do this, type 'replace' or 'replace <character>' and follow the prompts.", turns_elapsed)
     elif qualifier == "refuel":
         if gamestate.get("refuel", False):
             msg_help(" Once you have found crystals and converted them into crystal dust, you can use them to top up the PowerSupply.", turns_elapsed)
@@ -464,9 +490,6 @@ def handle_help_command(task_package, qualifier=None, gamestate=None):
     elif qualifier == "reset":
         msg_help(" Sometimes life just gets in the way and things get messed up. A 'reset' lets you have another go at this Outpost thing.", turns_elapsed)
         msg_help(" To give up and start again - and there's no shame in this - just type 'reset' and you will be asked to confirm before proceeding.", turns_elapsed)
-    elif qualifier == "status":
-        msg_help(" This gives you a broad overview of the state of your Outpost, and it doesn't even cost a turn point!", turns_elapsed)
-        msg_help(" To get your Outpost snapshot, type 'status'.", turns_elapsed)
     else:
         msg_help(" Help on that command is either not available yet, or that is not actually a command. Type 'help' for a list of available commands.", turns_elapsed)
 

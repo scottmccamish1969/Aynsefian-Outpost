@@ -5,6 +5,11 @@ CONFIG_FILE = "outpost_config.json"
 LOG_FILE = "outpost_log.txt"
 LOG_FILE_OLD = "outpost_log.old"
 
+# At the moment the user can only print the initial orders
+AVAILABLE_FILES = {
+        "orders": ""
+}
+
 # Number of humans and droids
 NUM_HUMANS = 4
 NUM_DROIDS = 4
@@ -40,6 +45,7 @@ HUNGER_WARNING = {
     "Near Death": 23,
     "Deceased": 28   
 }
+ONE_DAY_HUNGRY = 10
 
 # Charging constants
 INITIAL_CHARGE = 15000      # Enough for 15 droid charges (7.5 days for all charged, then 3 droids, then nothing - MUST then be mining crystals)
@@ -78,7 +84,29 @@ CMD_LIST = "list"
 CMD_QUIT = "quit"
 CMD_READ = "read"
 CMD_RESET = "reset"
-CMD_STATUS = "status"
+
+# List of all possible commands or tasks the user might enter OR generate
+ALL_TASKS = {
+    TASK_ASSIGNED,
+    TASK_CHARGING,
+    TASK_EATING,
+    TASK_EXAMINING,
+    TASK_EXPLORING,
+    TASK_MINING,
+    TASK_PLANTING,
+    TASK_REAPING,
+    TASK_REFUELING,
+    TASK_TOWING_DROID,
+    CMD_ASSIGN,
+    CMD_CHARGE,
+    CMD_EXAMINE,
+    CMD_EXPLORE,
+    CMD_FEED,
+    CMD_MINE,
+    CMD_PLANT,
+    CMD_REAP,
+    CMD_REFUEL
+}
 
 # Mapping (for use in some functions)
 COMMAND_MAP = {
@@ -124,23 +152,23 @@ CHARGE_DURATION = 4  # No reason to make this variable
 # Commands that may or may not be used
 INITIAL_GAMESTATE = {
     "assign": False,
+    "cancel": True,
     "charge": True,
     "examine": True,
     "explore": True,
     "feed": True,
+    "help": True,
+    "list": True,
     "mine": False,
+    "next": True,
     "plant": False,
+    "quit": True,
+    "read": True,
     "reap": False,
     "refuel": False,
     "repair": False,
-    "list": True,
-    "manage": True,
-    "help": True,
-    "next": True,
-    "read": True,
+    "replace": True,
     "reset": True,
-    "status": True,
-    "quit": True,
     "game_over": False,
     "turn_suspended": False,
     "endgame_reason": "null",

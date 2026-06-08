@@ -5,8 +5,8 @@ import sys
 from constants import ENDGAME_REASONS
 from lore.lore_ingame import get_message, print_commands
 from lore.lore_story import get_story_message
+import lore.user_interface as ui_runtime
 from lore.user_interface import get_input, msg_story
-from status import print_status
 from utils import initialise_outpost, check_shield_state
 
 
@@ -80,22 +80,39 @@ def handle_game_over_loop(task_package):
     # Returns updated task_package or exits.
     turns_elapsed = task_package["counters"]["turns"]
 
-    print_status(task_package)
-
     while True:
-        choice = get_input("input", "endgame_choice", task_package["counters"]["turns"])
         reason_code = task_package["gamestate"].get("endgame_reason")
+        if ui_runtime.UI_MODE == "gui" and ui_runtime.ACTIVE_UI is not None:
+            ui_runtime.ACTIVE_UI.set_pending_question(
+                callback=resume_game_over_loop,
+                context={
+                    "task_package": task_package,
+                    "reason_code": reason_code
+                }
+            )
+        answer = get_input("input", "endgame_choice", task_package["counters"]["turns"])
 
-        if choice in ("reset", "r"):
-            task_package = initialise_outpost(first_time=False)
+        if answer and answer == ui_runtime.GUI_PENDING:
+            return None
+
+
+def resume_game_over_loop(answer, context):
+    task_package = context["task_package"]
+    reason_code = context["reason_code"]
+    turns_elapsed = task_package["counters"]["turns"]
+
+    if answer and answer.lower() in ("reset", "r"):
+        task_package = initialise_outpost(first_time=False)
+        if task_package:
             print_commands(turns_elapsed)
-            return task_package
+        return task_package
 
-        if choice in ("quit", "exit", "q"):
-            if reason_code == "you_win?":
-                msg_story(get_story_message("quit", "you_win?"), task_package["counters"]["turns"])
-            else:
-                msg_story(get_story_message("quit", "fail"), task_package["counters"]["turns"])
-            sys.exit(0)
+    if answer and answer.lower() in ("quit", "exit", "q"):
+        if reason_code == "you_win?":
+            msg_story(get_story_message("quit", "you_win?"), task_package["counters"]["turns"])
+        else:
+            msg_story(get_story_message("quit", "fail"), task_package["counters"]["turns"])
+        sys.exit(0)
 
-        msg_story(get_story_message("endgame", "restart"), task_package["counters"]["turns"])
+    msg_story(get_story_message("endgame", "restart"), task_package["counters"]["turns"])
+    return task_package

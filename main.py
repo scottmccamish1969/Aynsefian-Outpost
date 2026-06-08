@@ -1,11 +1,12 @@
 # main.py
 
 from endgame import check_endgame, handle_game_over_loop
-from lore.lore_ingame import print_commands
-from lore.lore_story import get_story_message
-from OutpostUI import OutpostUI, get_state_panel_text, get_top_bar_data
+from lore.lore_ingame import print_commands, get_message
+from lore.lore_story import get_story_message, msg_story
+from lore.user_interface import msg_warn
+from OutpostUI import OutpostUI
 from turns import process_user_input
-from utils import load_config, save_config
+from utils import load_config, update_screen
 
 import tkinter as tk
 
@@ -16,27 +17,7 @@ def main():
     import lore.user_interface as ui_runtime
     ui_runtime.UI_MODE = "gui"
     ui_runtime.ACTIVE_UI = ui
-    
-    task_package = load_config()
-    turns_elapsed = task_package["counters"]["turns"]
-
-    if not task_package["gamestate"]["game_over"]:
-        print(get_story_message("start", "opening_message"))
-
-    # Initial endgame check
-    game_over, end_msg, task_package = check_endgame(task_package)
-
-    if game_over:
-        task_package = handle_game_over_loop(end_msg)
-    else:
-        print_commands(turns_elapsed)
-
-    # Set some of the GUI requirements
-    top = get_top_bar_data(task_package)
-    ui.set_top_stats(**top)
-
-    state_text = get_state_panel_text(task_package)
-    ui.set_state_text(state_text)
+    awaiting_input = False
 
     def command_callback(command):
         ui.append_log(f">> {command}")
@@ -44,8 +25,29 @@ def main():
 
     ui.set_command_callback(command_callback)
 
-    root.mainloop()
+    task_package = load_config()
+    if task_package:
+        turns_elapsed = task_package["counters"]["turns"]
 
+        if not task_package["gamestate"]["game_over"]:
+            msg_story(get_story_message("start", "opening_message"), turns_elapsed)
+
+        # Initial endgame check
+        game_over, end_msg, task_package = check_endgame(task_package)
+
+        if game_over:
+            awaiting_input, task_package = handle_game_over_loop(end_msg)
+            if not awaiting_input:
+                if not task_package:
+                    msg_warn(get_message("error", "no_config"), 0)
+        else:
+            print_commands(turns_elapsed)
+
+    # Load the config again (as we might be a brand new game OR a reset) and update the screen
+    task_package = load_config()
+    update_screen(task_package)
+
+    root.mainloop()
 
 if __name__ == "__main__":
     main()

@@ -11,8 +11,8 @@ import lore.user_interface as ui_runtime
 from lore.user_interface import get_input, msg_resource, msg_food, msg_error, msg_info, msg_power, log_and_display
 from constants import (NAMES, INITIAL_GAMESTATE, CONFIG_FILE, LOG_FILE, LOG_FILE_OLD, FEMALE, MALE, GENDERS, HUNGER, LOW_CHARGE_FLAG, IDLE_CHARGE_USAGE,
     NUM_HUMANS, NUM_DROIDS, HUNGER_WARNING, TASK_ASSIGNED, TASK_PLANTING, TASK_EATING, TASK_EXPLORING, TASK_MINING, TASK_CHARGING, COMMAND_MAP)
-from OutpostUI import get_state_panel_text, get_top_bar_data
-from status import display_character_summary
+from OutpostUI import get_top_bar_data
+from status import display_character_summary, get_state_panel_text
 
 
 def update_screen(task_package):
@@ -148,8 +148,12 @@ def initialise_outpost(first_time):
         tasks={}
     )
 
+    # Save after initialising
+    save_config(task_package)
+
     if first_time:
         print_orders(task_package["gamestate"])
+        return None
 
     return task_package
 
@@ -195,11 +199,12 @@ def load_config():
         first_time = True
         task_package = initialise_outpost(first_time)
 
-        save_config(task_package)
         return task_package
 
 
-def reset_config(task_package):
+def reset_config(task_package, context):
+    task_package = context["task_package"]
+
     # Resets the config file as per the user's request
     msg_info(get_message("reset", "start"), 0, end='')
 
@@ -210,8 +215,10 @@ def reset_config(task_package):
     first_time = False
     task_package = initialise_outpost(first_time)
 
-    # Save to config file
-    save_config(task_package)
+    # Update the gui screen (if using) and save to config file
+    if task_package:
+        if ui_runtime.GUI_PENDING:
+            update_screen(task_package)
 
     msg_info(get_message("reset", "done"), 0)
 
@@ -572,97 +579,19 @@ def clear_task_for_character(name, item, humans, droids):
     return humans, droids
 
 
-def get_integer_input(prompt, min_value=None, max_value=None):
-    # Prompts the user for an integer input, validates, and returns it.
-    # Accepts optional min and max values.
-    
-    while True:
-        user_input = input(prompt)
-        try:
-            value = int(user_input)
-            if min_value is not None and value < min_value:
-                print(f"❌ Please enter a number greater than or equal to {min_value}.")
-                continue
-            if max_value is not None and value > max_value:
-                print(f"❌ Please enter a number less than or equal to {max_value}.")
-                continue
-            return value
-        except ValueError:
-            print("❌ Invalid input. Please enter a valid integer.")
+def parse_integer_answer(answer, min_value=None, max_value=None):
+    try:
+        value = int(answer)
+    except (TypeError, ValueError):
+        return None, "invalid"
 
+    if min_value is not None and value < min_value:
+        return None, "too_low"
 
-def parse_command_targets(qualifier, task_type, task_package):
-        # Given a raw qualifier (name(s), group keyword, etc), task_type, and task_package,
-    # return a list of valid character names for the task.
+    if max_value is not None and value > max_value:
+        return None, "too_high"
 
-    humans = task_package["humans"]
-    droids = task_package["droids"]
-    turns_elapsed = task_package["counters"]["turns"]
-
-    # Set logic controls per task
-    supports_all = task_type in (TASK_CHARGING, TASK_EATING, TASK_EXPLORING)
-    supports_idle = task_type in (TASK_EXPLORING, TASK_MINING, TASK_PLANTING, TASK_EATING, TASK_CHARGING)
-    supports_hungry = task_type == TASK_EATING
-    supports_low = task_type == TASK_CHARGING
-
-    # Prompt if no qualifier
-    if not qualifier:
-        display_character_summary(humans, droids, task_type, turns_elapsed)
-        command_keyword = COMMAND_MAP.get(task_type, "action")  # fallback
-        qualifier = get_input("input", command_keyword, turns_elapsed)
-
-    # Normalize
-    if isinstance(qualifier, str):
-        qualifier = qualifier.lower().strip()
-        raw_names = [q.strip() for q in qualifier.replace(",", " ").split()]
-    else:
-        raw_names = qualifier
-
-    targets = []
-    found_valid_name = False
-
-    if qualifier == "all" and supports_all:
-        if task_type == TASK_CHARGING:
-            targets = list(droids.keys())
-        elif task_type == TASK_EATING:
-            targets = list(humans.keys())
-        else:
-            available_droids = [d for d in droids if droids[d]["charge"] > 0 or droids[d]["task"] == TASK_CHARGING] 
-            targets = list(humans.keys()) + available_droids
-        found_valid_name = True
-
-    elif qualifier == "idle" and supports_idle:
-        idle_humans = [h for h in humans if humans[h]["task"] == ""]
-        idle_droids = [d for d in droids if droids[d]["task"] == "" and droids[d]["charge"] > 0]
-        targets = idle_humans + idle_droids
-        found_valid_name = True
-
-    elif qualifier == "hungry" and supports_hungry:
-        targets = [h for h in humans if humans[h]["state"] in ("Hungry", "Starving", "Near Death")]
-        found_valid_name = True
-
-    elif qualifier == "low" and supports_low:
-        targets = [d for d in droids if droids[d]["charge"] <= LOW_CHARGE_FLAG * IDLE_CHARGE_USAGE]
-        found_valid_name = True
-
-    else:
-        # Parse names
-        for name in raw_names:
-            match = get_best_match(name, list(humans.keys()) + list(droids.keys()))
-            if match:
-                if task_type == TASK_EATING and match in droids:
-                    continue
-                if task_type == TASK_CHARGING and match in humans:
-                    continue
-                targets.append(match)
-                found_valid_name = True
-
-    if not found_valid_name:
-        command_keyword = COMMAND_MAP.get(task_type, "that action")
-        msg_error(get_message("error", "unknown_worker", name=qualifier, task=task_type), turns_elapsed)
-        return None
-
-    return targets
+    return value, ""
 
 
 def set_examine_needed_after_explore(name, task_package):

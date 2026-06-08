@@ -853,7 +853,7 @@ JUNK = [
         "examined": False,
         "examine_turns": 0,
         "found": False,
-        "msg": "People still want these? Pray tell why? It's even got a compatabile power plug, but the needle is missing. Oh well. Back to planting, mining, and getting the shield up."
+        "msg": "People still want these? Pray tell why? It's even got a compatible power plug, but the needle is missing. Oh well. Back to planting, mining, and getting the shield up."
     },
     {
         "name": "ReplacementNeedle",
@@ -1014,6 +1014,46 @@ JUNK = [
         "examine_turns": 0,
         "found": False,
         "msg": "The origin and hygeine of this thing is doubtful. In both cases. This needs to be disposed of, forthwith."
+    },
+    {
+        "name": "RustyMetalDrum",
+        "category": "junk",
+        "category_counter": 61,
+        "examinable": True,
+        "examined": False,
+        "examine_turns": 0,
+        "found": False,
+        "msg": "This is a metallic drum that has seen better days. You could use it as a bin, to put all the other useless items in. That makes it more valuable than most things you could find here at the Outpost."
+    },
+    {
+        "name": "ThreePacksOfSocks",
+        "category": "junk",
+        "category_counter": 62,
+        "examinable": True,
+        "examined": False,
+        "examine_turns": 0,
+        "found": False,
+        "msg": "These are actually multi-packs of socks, three of them. They look okay, at best. 21 pairs in total. Nobody needs any more socks. Hard to know what to do with these, in that case."
+    },
+    {
+        "name": "LightningRod",
+        "category": "junk",
+        "category_counter": 63,
+        "examinable": True,
+        "examined": False,
+        "examine_turns": 0,
+        "found": False,
+        "msg": "Are there any clouds on this planet? The wind blows constantly, that is all you know. Rain or even lightning is another matter altogether. So this is a strange find."
+    },
+    {
+        "name": "AncientGnosticTextInAClayJar",
+        "category": "junk",
+        "category_counter": 64,
+        "examinable": True,
+        "examined": False,
+        "examine_turns": 0,
+        "found": False,
+        "msg": "There's one of those here too! You are truly astonished at this find. When the shield goes up, and you have free time, it might be worth a read."
     },
 ]
 

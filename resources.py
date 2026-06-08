@@ -1,6 +1,7 @@
 # resources.py
 
 import random
+from command_utils import get_integer_input
 from constants import (
     RATION_PACKS, MAJOR_RESOURCES_ORDER, CHAIN_RESOURCES_ORDER, GATING_RULES, NORMAL_ITEM_RARITY, GATE_ITEM_RARITY, POST_CRITICAL_ITEM_RARITY,
     IDLE_CHARGE_USAGE, FULL_CHARGE, INITIAL_CHARGE, INITIAL_SEED_STASH, SEED_PACKETS_USED, NUM_DROIDS, LOW_CHARGE_FLAG, 
@@ -8,9 +9,9 @@ from constants import (
 )
 from items import REPLACEMENT, CHAIN, NOVELTY, JUNK, ITEM_DB, get_item_template
 from lore.lore_ingame import get_message
-from lore.user_interface import get_confirm, msg_power
+from lore.user_interface import get_confirm, msg_power, get_integer_input
 from planting import initialise_hydroponics_room
-from utils import get_task_by_worker, set_shield_state, clear_task_for_character, get_integer_input
+from utils import get_task_by_worker, set_shield_state, clear_task_for_character
 
 def get_resource(resources, name):
     for res in resources:

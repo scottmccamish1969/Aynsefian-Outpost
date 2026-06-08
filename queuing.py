@@ -5,6 +5,7 @@ from command_utils import create_task
 from constants import (TASK_EATING, TASK_CHARGING, TASK_EXPLORING, TASK_ASSIGNED, TASK_EXAMINING, TASK_PLANTING, TASK_MINING, TASK_REAPING, TASK_TOWING_DROID,
                        TASK_REFUELING, TASK_LENGTH, CHARGE_DURATION, LOW_CHARGE_FLAG, IDLE_CHARGE_USAGE, TOW_TASK_LENGTH)
 from lore.lore_ingame import get_message
+import lore.user_interface as ui_runtime
 from lore.user_interface import (get_input, msg_food, msg_power, msg_error,  msg_info, msg_explore, msg_crystal, msg_mine, msg_plant, msg_resource,
                                 msg_shield, msg_warn, log_and_display)
 from utils import get_pronouns, clear_examine_needed_flag, process_hunger_status
@@ -116,54 +117,80 @@ def get_next_task_from_queue_if_any(name, task_package):
     turns_elapsed = task_package["counters"]["turns"]
     is_human = name in humans
     next_task_name = ""
+    awaiting_input = False
 
     # Check and potentially reset hunger status if this is a human
     if is_human:
         task_package = process_hunger_status(name, task_package, warn=False)
 
-    # If the character is hungry (or worse) or low on charge, put a pause on the examine and feed or charge them
+    # If the character is hungry or low on charge, pause normal queue handling
     # NOTE: If a droid is "Out" of charge, they must be towed by a human
     state = get_character_status(name, humans, droids)
-    if state in ("Hungry", "Starving", "Near Death" "Low"):
-        if is_human: 
-            if (humans[name]["task"] == TASK_EATING):   # They may already be eating (after an explore - with a paused examine)
-                return next_task_name, name, task_package   # In which case, don't do anything
+
+    if state in ("Hungry", "Starving", "Near Death", "Low"):
+        if is_human:
+            # They may already be eating after an explore with a paused examine
+            if humans[name]["task"] == TASK_EATING:
+                return next_task_name, name, awaiting_input, task_package
+
             humans[name]["generated"] = True
             return_msg, task_package = do_auto_feed(name, task_package)
+
             if return_msg != "":
                 msg_food(return_msg, turns_elapsed, stamp=False)
-        else: 
-            if (droids[name]["task"] == TASK_CHARGING):   # They may already be charging (after an explore - with a paused examine)
-                return next_task_name, name, task_package   # In which case, don't do anything
+
+        else:
+            # They may already be charging after an explore with a paused examine
+            if droids[name]["task"] == TASK_CHARGING:
+                return next_task_name, name, awaiting_input, task_package
+
             droids[name]["generated"] = True
             return_msg, task_package = do_auto_charge(name, task_package)
+
             if return_msg != "":
                 msg_power(return_msg, turns_elapsed, end='\n', stamp=False)
 
         if return_msg == "":
             msg_error(get_message("error", "invalid_auto_msg", name=name), turns_elapsed)
 
-        return next_task_name, name, task_package
-    
-    # If it's a human, they can tow a droid if there is at least one droid that has run out of charge
-    if is_human:        
-        droid_at_zero = get_out_of_charge_droid(droids)
-        if droid_at_zero != "":
-            confirmed = get_input("input", "zero_charge", turns_elapsed, droid=droid_at_zero)
-            if confirmed.lower() in ("y", "yes"):
-                duration = TOW_TASK_LENGTH
-                task_type = TASK_TOWING_DROID
-                msg_power(get_message("charge", "towing", name=name, droid_being_towed=droid_at_zero, turns=duration), turns_elapsed)
+        return next_task_name, name, awaiting_input, task_package
 
-                # Create the tow task
-                task_package["item"] = droid_at_zero  # In this case the item is actually the droid
-                humans[name]["generated"] = True
-                return_msg, task_package = create_task(name, task_type, duration, task_package)
-                msg_power(return_msg, turns_elapsed)
-                return next_task_name, name, task_package
+    # If it's a human, they can tow a droid if one has run out of charge
+    if is_human:
+        droid_at_zero = get_out_of_charge_droid(droids)
+
+        if droid_at_zero != "":
+            if ui_runtime.UI_MODE == "gui" and ui_runtime.ACTIVE_UI is not None:
+                ui_runtime.ACTIVE_UI.set_pending_question(
+                    callback=resume_towing_if_human_available,
+                    context={
+                        "task_package": task_package,
+                        "name": name,
+                        "droid_at_zero": droid_at_zero,
+                    }
+                )
+
+            answer = get_input("input", "zero_charge", turns_elapsed, droid=droid_at_zero)
+
+            if answer and answer == ui_runtime.GUI_PENDING:
+                return None
+
+            # CLI path, or non-pending path
+            return resume_towing_if_human_available(answer, {"task_package": task_package, "name": name, "droid_at_zero": droid_at_zero,})
+
+    # No towing interruption needed, so continue normally
+    return continue_get_next_task_from_queue_if_any(name, task_package)
+
+
+def continue_get_next_task_from_queue_if_any(name, task_package):
+    humans = task_package["humans"]
+    droids = task_package["droids"]
+    turns_elapsed = task_package["counters"]["turns"]
+    is_human = name in humans
+    next_task_name = ""
+    awaiting_input = False
 
     # Check to see if there is an Examine task that was paused due to auto-feed or auto-charge
-    examine_is_needed = False
     if is_human:
         examine_is_needed = humans[name]["examine_needed"]
         item_to_examine = humans[name]["examine_needed"]
@@ -174,18 +201,27 @@ def get_next_task_from_queue_if_any(name, task_package):
     if examine_is_needed:
         pronouns = get_pronouns(name, is_human)
         log_and_display("", turns_elapsed, stamp=None)
-        confirmed = get_input("input", "resume_examine", turns_elapsed, name=name, pronoun1=pronouns["p1"].lower(), pronoun2=pronouns["p2"].lower(), item=item_to_examine)
-        if confirmed.lower() in ("y", "yes"):
-            task_package["item"] = item_to_examine
-            restart_examine(name, task_package)
-        else:
-            msg_resource(get_message("examine", "aborted"), turns_elapsed)
 
-        # Either way, clear the flag
-        task_package = clear_examine_needed_flag(name, task_package)
-        
-        return next_task_name, name, task_package
-    
+        if ui_runtime.UI_MODE == "gui" and ui_runtime.ACTIVE_UI is not None:
+            ui_runtime.ACTIVE_UI.set_pending_question(
+                callback=resume_delayed_examine_processing,
+                context={
+                    "task_package": task_package,
+                    "name": name,
+                    "item": item_to_examine,
+                    "next_action": next_task_name,
+                }
+            )
+
+        answer = get_input("input", "resume_examine", turns_elapsed, name=name, pronoun1=pronouns["p1"].lower(), pronoun2=pronouns["p2"].lower(), item=item_to_examine)
+
+        if answer and answer == ui_runtime.GUI_PENDING:
+            awaiting_input = True
+        else:
+            msg_error(get_message("error", "no_CLI"), turns_elapsed)
+
+        return next_task_name, name, awaiting_input, task_package
+
     # We are able to continue with the next queued task
     queue = humans[name]["queue"] if is_human else droids[name]["queue"]
 
@@ -199,39 +235,72 @@ def get_next_task_from_queue_if_any(name, task_package):
     if queue["1"]["task"] == "":
         is_are = "are" if not is_human else "is"
         pronoun_str = f"{get_pronouns(name, is_human)['p1']} {is_are}"
-        msg_info(get_message("queue", "is_now_idle", pronoun_str=pronoun_str), turns_elapsed, stamp=False)
-        return next_task_name, name, task_package
+        msg_info(
+            get_message("queue", "is_now_idle", pronoun_str=pronoun_str),
+            turns_elapsed,
+            stamp=False
+        )
+        return next_task_name, name, awaiting_input, task_package
 
     # Shift queue
     next_task = queue["1"].copy()
     next_task_name = next_task["task"]
+
     queue["1"] = queue["2"].copy()
     queue["2"] = queue["3"].copy()
     queue["3"] = {"task": "", "item": ""}
+
     task_package["item"] = next_task["item"]
+
     task_data = next_task.get("task_data", "")
     if task_data:
         task_package["task_data"] = task_data
 
     is_are = "are" if not is_human else "is"
     pronoun_str = f"{get_pronouns(name, is_human)['p1']} {is_are}"
-    
+
     if next_task_name == TASK_EATING:
         msg_food(get_message("queue", "is_now", pronoun_str=pronoun_str, task=next_task["task"]), turns_elapsed, stamp=False)
+
     elif next_task_name in (TASK_CHARGING, TASK_REFUELING, TASK_TOWING_DROID):
         msg_power(get_message("queue", "is_now", pronoun_str=pronoun_str, task=next_task["task"]), turns_elapsed, stamp=False)
+
     elif next_task_name == TASK_EXPLORING:
         msg_explore(get_message("queue", "is_now", pronoun_str=pronoun_str, task=next_task["task"]), turns_elapsed, stamp=False)
+
     elif next_task_name == TASK_EXAMINING:
         msg_resource(get_message("queue", "is_now", pronoun_str=pronoun_str, task=next_task["task"]), turns_elapsed, stamp=False)
+
     elif next_task_name == TASK_PLANTING:
         msg_plant(get_message("queue", "is_now", pronoun_str=pronoun_str, task=next_task["task"]), turns_elapsed, stamp=False)
+
     elif next_task_name == TASK_MINING:
         msg_mine(get_message("queue", "is_now", pronoun_str=pronoun_str, task=next_task["task"]), turns_elapsed, stamp=False)
+
     else:
         msg_info(get_message("queue", "is_now", pronoun_str=pronoun_str, task=next_task["task"]), turns_elapsed, stamp=False)
+                 
+    return next_task_name, name, awaiting_input, task_package
 
-    return next_task_name, name, task_package
+
+def resume_delayed_examine_processing(answer, context):
+    task_package = context["task_package"]
+    name = context["name"]
+    item_to_examine = context["item"]
+    next_action = context["next_action"]
+    turns_elapsed = task_package["counters"]["turns"]
+
+    if answer and answer.lower() in ("y", "yes"):
+        task_package["item"] = item_to_examine
+        restart_examine(name, task_package)
+    else:
+        msg_resource(get_message("examine", "aborted", target=name, item=item_to_examine), turns_elapsed)
+        # From here, they should just pick up the next queued task. We'll see.
+
+    # Either way, clear the flag
+    task_package = clear_examine_needed_flag(name, task_package)
+    
+    return task_package
 
 
 # Send back the first droid that is out of charge and this is not the first time they are being charged
@@ -240,6 +309,38 @@ def get_out_of_charge_droid(droids):
         if d.get("charge", 0) == 0 and not d.get("first_charge", False):
             return name
     return ""
+
+
+def resume_towing_if_human_available(answer, context):
+    task_package = context["task_package"]
+    name = context["name"]
+    droid_at_zero = context["droid_at_zero"]
+
+    humans = task_package["humans"]
+    turns_elapsed = task_package["counters"]["turns"]
+    awaiting_input = False
+    next_task_name = ""
+
+    if answer and answer and answer.lower() in ("y", "yes"):
+        duration = TOW_TASK_LENGTH
+        task_type = TASK_TOWING_DROID
+
+        msg_power(get_message("charge", "towing", name=name, droid_being_towed=droid_at_zero, turns=duration), turns_elapsed)
+
+        # Create the tow task
+        task_package["item"] = droid_at_zero  # In this case the item is actually the droid
+        humans[name]["generated"] = True
+
+        return_msg, task_package = create_task(name, task_type, duration, task_package)
+
+        if return_msg != "":
+            msg_power(return_msg, turns_elapsed)
+
+        return next_task_name, name, awaiting_input, task_package
+
+    # Player refused to tow the powerless droid.
+    # Technically allowed. Morally entered into the ancient ledger.
+    return continue_get_next_task_from_queue_if_any(name, task_package)
 
 
 def get_character_status(name, humans, droids):
@@ -267,6 +368,7 @@ def do_auto_feed(name, task_package):
 
     state = get_character_status(name, humans, droids)
     if state in ("Hungry", "Starving", "Near Death"):
+        # If the player already has a queue 'feed' task, remove it
         humans, droids = remove_task_from_queue(name, TASK_EATING, humans, droids)
         task_package["humans"] = humans
         task_package["droids"] = droids
@@ -277,7 +379,11 @@ def do_auto_feed(name, task_package):
         return_msg, task_package = create_task(name, task_type, duration, task_package)
 
         pronouns = get_pronouns(name, is_human=True)
-        return_msg = get_message("queue", "auto_food", name=name, pronoun1=pronouns["p3"].lower(), pronoun2=pronouns["p1"], turns=duration)
+        if duration-1 == 1:
+            turn_msg = "1 turn"
+        else:
+            turn_msg = f"{duration-1} turns"
+        return_msg = get_message("queue", "auto_food", name=name, pronoun1=pronouns["p3"].lower(), pronoun2=pronouns["p1"], turn_msg=turn_msg)
 
     return return_msg, task_package
 
@@ -300,7 +406,11 @@ def do_auto_charge(name, task_package):
         task_type = TASK_CHARGING
         return_msg, task_package = create_task(name, task_type, duration, task_package)
 
-        return_msg = get_message("queue", "auto_charge", name=name, turns=duration)
+        if duration-1 == 1:
+            turn_msg = "1 turn"
+        else:
+            turn_msg = f"{duration-1} turns"
+        return_msg = get_message("queue", "auto_charge", name=name, turn_msg=turn_msg)
 
     return return_msg, task_package
 
