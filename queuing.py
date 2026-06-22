@@ -1,14 +1,13 @@
 # queuing.py
 import random
 
-from command_utils import create_task
+from command_utils import create_task, get_pronouns
 from constants import (TASK_EATING, TASK_CHARGING, TASK_EXPLORING, TASK_ASSIGNED, TASK_EXAMINING, TASK_PLANTING, TASK_MINING, TASK_REAPING, TASK_TOWING_DROID,
                        TASK_REFUELING, TASK_LENGTH, CHARGE_DURATION, LOW_CHARGE_FLAG, IDLE_CHARGE_USAGE, TOW_TASK_LENGTH)
 from lore.lore_ingame import get_message
 import lore.user_interface as ui_runtime
-from lore.user_interface import (get_input, msg_food, msg_power, msg_error,  msg_info, msg_explore, msg_crystal, msg_mine, msg_plant, msg_resource,
-                                msg_shield, msg_warn, log_and_display)
-from utils import get_pronouns, clear_examine_needed_flag, process_hunger_status
+from lore.user_interface import get_input, msg_food, msg_power, msg_error,  msg_info, msg_explore, msg_mine, msg_plant, msg_resource, log_and_display
+from utils import clear_examine_needed_flag, process_hunger_status
 
 def is_idle(name, humans, droids):
     if name in humans:
@@ -56,7 +55,7 @@ def add_to_queue(name, humans, droids, turns_elapsed, task_type, item="", task_d
         if task_data != "":
             target_queue[next_slot]["task_data"] = task_data
         if item == "":
-            if task_type == TASK_EATING:
+            if task_type == TASK_EATING or task_type == TASK_REAPING:
                 msg_food(get_message("queue", "queued", now_doing=now_doing, name=name, task=task_type), turns_elapsed)
             elif task_type in (TASK_CHARGING, TASK_REFUELING, TASK_TOWING_DROID):
                 msg_power(get_message("queue", "queued", now_doing=now_doing, name=name, task=task_type), turns_elapsed)
@@ -85,7 +84,7 @@ def add_to_queue(name, humans, droids, turns_elapsed, task_type, item="", task_d
         return humans, droids
 
 
-def remove_task_from_queue(name, task_type, humans, droids):
+def delete_task_from_queue(name, task_type, humans, droids):
     # Removes the first queued task of a certain type from character's queue
     is_human = name in humans
     queue = humans[name]["queue"] if is_human else droids[name]["queue"]
@@ -182,21 +181,29 @@ def get_next_task_from_queue_if_any(name, task_package):
     return continue_get_next_task_from_queue_if_any(name, task_package)
 
 
-def continue_get_next_task_from_queue_if_any(name, task_package):
+def continue_get_next_task_from_queue_if_any(supplied_name, task_package):
     humans = task_package["humans"]
     droids = task_package["droids"]
     turns_elapsed = task_package["counters"]["turns"]
-    is_human = name in humans
     next_task_name = ""
     awaiting_input = False
 
+    name = str(supplied_name).strip()
+
+    human_name = next((key for key in humans if key.casefold() == supplied_name.casefold()), None)
+    droid_name = next((key for key in droids if key.casefold() == supplied_name.casefold()), None)
+    is_human = human_name is not None
+
     # Check to see if there is an Examine task that was paused due to auto-feed or auto-charge
-    if is_human:
+    if human_name is not None:
         examine_is_needed = humans[name]["examine_needed"]
         item_to_examine = humans[name]["examine_needed"]
-    else:
+    elif droid_name is not None:
         examine_is_needed = droids[name]["examine_needed"]
         item_to_examine = droids[name]["examine_needed"]
+    else:
+        msg_error(get_message("error", "character_not_found", name=name), turns_elapsed)
+        return next_task_name, name, awaiting_input, task_package
 
     if examine_is_needed:
         pronouns = get_pronouns(name, is_human)
@@ -369,7 +376,7 @@ def do_auto_feed(name, task_package):
     state = get_character_status(name, humans, droids)
     if state in ("Hungry", "Starving", "Near Death"):
         # If the player already has a queue 'feed' task, remove it
-        humans, droids = remove_task_from_queue(name, TASK_EATING, humans, droids)
+        humans, droids = delete_task_from_queue(name, TASK_EATING, humans, droids)
         task_package["humans"] = humans
         task_package["droids"] = droids
 
@@ -396,9 +403,9 @@ def do_auto_charge(name, task_package):
     humans = task_package["humans"]
     return_msg = ""
 
-    state = get_character_status(name, droids, droids)
+    state = get_character_status(name, humans, droids)
     if state == "Low":      # A droid out of charge must be towed by a human
-        droids, humans = remove_task_from_queue(name, TASK_CHARGING, droids, humans)
+        droids, humans = delete_task_from_queue(name, TASK_CHARGING, droids, humans)
         task_package["droids"] = droids
         task_package["humans"] = humans
 

@@ -127,10 +127,12 @@ def get_message(category, code, **kwargs):
             "invalid_command": "DEVELOPER: Invalid command '{command}'",
             "invalid_command_from_function": "DEVELOPER NOTE: Invalid command returned from function - '{action}'.",
             "list_fail": "You cannot list this category of 'things'. Nice try though. A random shot in the dark has worked in other spheres of action.",
+            "no_callback": "DEVELOPER: get_integer_input called in GUI mode without callback",
             "no_character": "{name} does not exist. Try again?",
             "no_CLI": "DEVELOPER: CLI not supported.",
             "no_config": "DEVELOPER: The configuration file is not present. Please restart the game.",
             "no_food_store" : "Unfortunately, you have no place in which to store food. This could present problems.",
+            "no_existing_task": "DEVELOPER: Task does not exist for {name}.",
             "no_items": "You have not found any items yet, so you cannot list anything.",
             "no_power": "Ordinarily it would be a good move using {name} for this {task} task, but since they are out of charge, you can't do it.",
             "no_power_for_assign": "Ordinarily it would be a good assigning {name} to this item, but since they are out of charge, you can't do it.",
@@ -255,6 +257,7 @@ def get_message(category, code, **kwargs):
             "reset_abort": "Reset aborted. Your hesitation has cost the colony 1 turn. 🔥"
         },
         "plant": {
+            "aborted": "You have decided that {target} has more important things to do than plant. {pronoun} {is_are} dismayed at this decision. {pronoun}'ll get over it.",
             "bed_occupied": "Cannot plant anything in bed {bed}. It is already being used.",
             "commenced": "{target} has vanished into the planting area for {turn_msg} with a packet of seeds and not much else. Hoping for the best is all you can do at this stage.",
             "crop_matured": "🌱 {planter}'s {crop_type} crop in bed #{bed} has matured!",
@@ -302,7 +305,7 @@ def get_message(category, code, **kwargs):
             "queued_assign": "{name} is busy {now_doing}. The assignment to the {item} has been queued.",
             "queued_examine": "{name} is busy {now_doing}. The examining of the {item} has been queued.",
             "queued_with_item": "{name} is busy {now_doing}. The {task} task relating to the {item} has been queued.",
-            "queued_with_task_data": "{name} is busy {now_doing}. The {task} task with these instructions [{task_data}] has been queued.",
+            "queued_with_task_data": "{name} is busy {now_doing}. The {task} task has been queued.",
             "removed_task": "{queued_task} task in position {pos} has been removed from {character}'s queue.", 
             "removed_task_abort": "You choose not to remove a task from {character}'s queue.", 
             "removed_task_invalid": "That is an invalid queue position. Select a number between 1 and 3.",
@@ -347,7 +350,7 @@ def get_message(category, code, **kwargs):
         },
         "replace" : {
             "cannot_interrupt": "{name} is currently {task}, and cannot be interrupted until they are finished. {new_task} has been placed at the top of their work queue.",
-            "invalid_task": "{name} cannot be tasked with {new_task} as this is not a valid task. Try again. Maybe have a stimulant drink if you can find one?",
+            "invalid_task": "{name} cannot be tasked with '{new_task}' as this is not a valid task. Try again. Maybe have a stimulant drink if you can find one?",
             "is_idle": "{name} is currently Idle, so there is nothing to replace. Just task them directly with whatever you want them to do.",
             "not_replaced": "You decide to leave {name} along for now. It seems they appreciate that sentiment.",
             "replacing": "Right you are, Commander. {name} will immediately stop {old_task} and go right to {new_task}.",

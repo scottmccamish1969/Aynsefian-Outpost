@@ -1,37 +1,159 @@
 {
-    "humans": {
+    "crops": {},
+    "droids": {
         "Mike": {
-            "hunger": 0,
-            "state": "Okay",
-            "task": "",
+            "charge": 900,
+            "AncientCode": false,
+            "task": "Exploring",
+            "generated": true,
             "item": "",
+            "examine_needed": "",
+            "first_charge": true,
             "queue": {
                 "1": {
-                    "task": "",
+                    "task": "Exploring",
                     "item": ""
                 },
                 "2": {
-                    "task": "",
+                    "task": "Exploring",
                     "item": ""
                 },
                 "3": {
-                    "task": "",
+                    "task": "Exploring",
+                    "item": ""
+                }
+            }
+        },
+        "Terry": {
+            "charge": 900,
+            "AncientCode": false,
+            "task": "Exploring",
+            "generated": true,
+            "item": "",
+            "examine_needed": "",
+            "first_charge": true,
+            "queue": {
+                "1": {
+                    "task": "Exploring",
+                    "item": ""
+                },
+                "2": {
+                    "task": "Exploring",
+                    "item": ""
+                },
+                "3": {
+                    "task": "Exploring",
+                    "item": ""
+                }
+            }
+        },
+        "Karla": {
+            "charge": 900,
+            "AncientCode": false,
+            "task": "Exploring",
+            "generated": true,
+            "item": "",
+            "examine_needed": "",
+            "first_charge": true,
+            "queue": {
+                "1": {
+                    "task": "Exploring",
+                    "item": ""
+                },
+                "2": {
+                    "task": "Exploring",
+                    "item": ""
+                },
+                "3": {
+                    "task": "Exploring",
+                    "item": ""
+                }
+            }
+        },
+        "Rin": {
+            "charge": 900,
+            "AncientCode": false,
+            "task": "Exploring",
+            "generated": true,
+            "item": "",
+            "examine_needed": "",
+            "first_charge": true,
+            "queue": {
+                "1": {
+                    "task": "Exploring",
+                    "item": ""
+                },
+                "2": {
+                    "task": "Exploring",
+                    "item": ""
+                },
+                "3": {
+                    "task": "Exploring",
+                    "item": ""
+                }
+            }
+        }
+    },
+    "gamestate": {
+        "assign": false,
+        "cancel": true,
+        "charge": true,
+        "examine": true,
+        "explore": true,
+        "feed": true,
+        "help": true,
+        "list": true,
+        "mine": false,
+        "next": true,
+        "plant": false,
+        "quit": true,
+        "read": true,
+        "reap": false,
+        "refuel": false,
+        "repair": false,
+        "replace": true,
+        "reset": true,
+        "game_over": false,
+        "turn_suspended": false,
+        "endgame_reason": "null"
+    },
+    "humans": {
+        "Niobe": {
+            "hunger": 10,
+            "state": "Hungry",
+            "task": "Eating",
+            "generated": true,
+            "item": "ThreePacksOfSocks",
+            "examine_needed": "ThreePacksOfSocks",
+            "queue": {
+                "1": {
+                    "task": "Exploring",
+                    "item": ""
+                },
+                "2": {
+                    "task": "Exploring",
+                    "item": ""
+                },
+                "3": {
+                    "task": "Exploring",
                     "item": ""
                 }
             }
         },
         "Alex": {
-            "hunger": 0,
+            "hunger": 2,
             "state": "Okay",
-            "task": "",
+            "task": "Exploring",
+            "generated": true,
             "item": "",
+            "examine_needed": "",
             "queue": {
                 "1": {
-                    "task": "",
+                    "task": "Exploring",
                     "item": ""
                 },
                 "2": {
-                    "task": "",
+                    "task": "Exploring",
                     "item": ""
                 },
                 "3": {
@@ -41,158 +163,132 @@
             }
         },
         "Carrie": {
-            "hunger": 0,
-            "state": "Okay",
-            "task": "",
+            "hunger": 10,
+            "state": "Hungry",
+            "task": "Eating",
+            "generated": true,
             "item": "",
+            "examine_needed": "",
             "queue": {
                 "1": {
-                    "task": "",
+                    "task": "Exploring",
                     "item": ""
                 },
                 "2": {
-                    "task": "",
+                    "task": "Exploring",
                     "item": ""
                 },
                 "3": {
-                    "task": "",
-                    "item": ""
-                }
-            }
-        },
-        "Karla": {
-            "hunger": 0,
-            "state": "Okay",
-            "task": "",
-            "item": "",
-            "queue": {
-                "1": {
-                    "task": "",
-                    "item": ""
-                },
-                "2": {
-                    "task": "",
-                    "item": ""
-                },
-                "3": {
-                    "task": "",
-                    "item": ""
-                }
-            }
-        }
-    },
-    "droids": {
-        "Rin": {
-            "charge": 0,
-            "AncientCode": false,
-            "task": "",
-            "item": "",
-            "queue": {
-                "1": {
-                    "task": "",
-                    "item": ""
-                },
-                "2": {
-                    "task": "",
-                    "item": ""
-                },
-                "3": {
-                    "task": "",
+                    "task": "Exploring",
                     "item": ""
                 }
             }
         },
         "Hariet": {
-            "charge": 0,
-            "AncientCode": false,
-            "task": "",
+            "hunger": 10,
+            "state": "Hungry",
+            "task": "Exploring",
+            "generated": true,
             "item": "",
+            "examine_needed": "",
             "queue": {
                 "1": {
-                    "task": "",
+                    "task": "Exploring",
                     "item": ""
                 },
                 "2": {
-                    "task": "",
+                    "task": "Exploring",
                     "item": ""
                 },
                 "3": {
-                    "task": "",
-                    "item": ""
-                }
-            }
-        },
-        "Terry": {
-            "charge": 0,
-            "AncientCode": false,
-            "task": "",
-            "item": "",
-            "queue": {
-                "1": {
-                    "task": "",
-                    "item": ""
-                },
-                "2": {
-                    "task": "",
-                    "item": ""
-                },
-                "3": {
-                    "task": "",
-                    "item": ""
-                }
-            }
-        },
-        "Niobe": {
-            "charge": 0,
-            "AncientCode": false,
-            "task": "",
-            "item": "",
-            "queue": {
-                "1": {
-                    "task": "",
-                    "item": ""
-                },
-                "2": {
-                    "task": "",
-                    "item": ""
-                },
-                "3": {
-                    "task": "",
+                    "task": "Exploring",
                     "item": ""
                 }
             }
         }
     },
-    "resources": [],
-    "tasks": {},
-    "task_number": 0,
-    "crops": {},
-    "crop_number": 0,
-    "turns_elapsed": 0,
-    "explore_count": 0,
-    "found_nothing_count": 0,
-    "gamestate": {
-        "assign": false,
-        "charge": true,
-        "examine": true,
-        "explore": true,
-        "feed": true,
-        "mine": false,
-        "plant": false,
-        "reap": false,
-        "refuel": false,
-        "repair": false,
-        "list": true,
-        "manage": true,
-        "help": true,
-        "next": true,
-        "read": true,
-        "reset": true,
-        "status": true,
-        "quit": true,
-        "game_over": false,
-        "endgame_reason": "null"
-    },
+    "item": "ThreePacksOfSocks",
+    "resources": [
+        {
+            "name": "FoodStore",
+            "category": "essential",
+            "category_counter": 1,
+            "examinable": false,
+            "examined": false,
+            "examine_turns": 0,
+            "replaceable": false,
+            "replaced": false,
+            "augmented": false,
+            "prob": 0.0,
+            "found": true,
+            "rationPack": 19,
+            "apple": 0,
+            "cabbage": 0,
+            "potato": 0,
+            "soup": 0,
+            "smoothie": 0,
+            "stirFry": 0,
+            "msg": "A place where you store your food. That's all you need to know."
+        },
+        {
+            "name": "PowerSupply",
+            "category": "essential",
+            "category_counter": 2,
+            "examinable": true,
+            "examined": true,
+            "examine_turns": 3,
+            "replaceable": false,
+            "alternative_item": "SolarPanelArray",
+            "replaced": false,
+            "augmented": false,
+            "prob": 0.0,
+            "found": true,
+            "amount": 11000,
+            "msg": "The power supply will eventually need vials of crystal dust. Initial charge level: 15000 units."
+        },
+        {
+            "name": "SeedStash",
+            "category": "essential",
+            "category_counter": 3,
+            "examinable": true,
+            "examined": true,
+            "examine_turns": 3,
+            "replaceable": false,
+            "replaced": false,
+            "augmented": false,
+            "prob": 0.7,
+            "found": true,
+            "apple": 219,
+            "cabbage": 60,
+            "potato": 121,
+            "msg": "You found a seed vault! Many varieties for hydroponic growth. There are 219 apple seeds, 121 potato seeds and 60 cabbage seeds."
+        },
+        {
+            "name": "WaterSource",
+            "category": "essential",
+            "category_counter": 4,
+            "examinable": true,
+            "examined": true,
+            "examine_turns": 0,
+            "replaceable": false,
+            "replaced": false,
+            "augmented": false,
+            "prob": 0.7,
+            "found": true,
+            "amount": 0,
+            "msg": "An essential supply of aqua pura for varying uses in this fledgling Outpost."
+        },
+        {
+            "name": "ThreePacksOfSocks",
+            "category": "junk",
+            "category_counter": 62,
+            "examinable": true,
+            "examined": false,
+            "examine_turns": 0,
+            "found": true,
+            "msg": "These are actually multi-packs of socks, three of them. They look okay, at best. 21 pairs in total. Nobody needs any more socks. Hard to know what to do with these, in that case."
+        }
+    ],
     "shieldstate": {
         "shield_found": false,
         "manual_decoded": false,
@@ -200,5 +296,69 @@
         "crystal_combo_valid": false,
         "shield_connected": false,
         "shield_active": false
+    },
+    "tasks": {
+        "14": {
+            "type": "Exploring",
+            "name": "Hariet",
+            "human": true,
+            "duration": 1
+        },
+        "17": {
+            "type": "Exploring",
+            "name": "Mike",
+            "human": false,
+            "duration": 2
+        },
+        "18": {
+            "type": "Exploring",
+            "name": "Terry",
+            "human": false,
+            "duration": 3
+        },
+        "19": {
+            "type": "Exploring",
+            "name": "Karla",
+            "human": false,
+            "duration": 2
+        },
+        "20": {
+            "type": "Exploring",
+            "name": "Rin",
+            "human": false,
+            "duration": 2
+        },
+        "21": {
+            "type": "Exploring",
+            "name": "Alex",
+            "human": true,
+            "duration": 3
+        },
+        "22": {
+            "type": "Eating",
+            "name": "Carrie",
+            "human": true,
+            "duration": 1
+        },
+        "23": {
+            "type": "Eating",
+            "name": "Niobe",
+            "human": true,
+            "duration": 1
+        },
+        "24": {
+            "type": "Eating",
+            "name": "Niobe",
+            "human": true,
+            "duration": 1
+        }
+    },
+    "task_data": {},
+    "counters": {
+        "turns": 10,
+        "task": 24,
+        "crop": 0,
+        "explore": 7,
+        "found_nil": 0
     }
 }

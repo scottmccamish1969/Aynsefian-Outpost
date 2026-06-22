@@ -1,7 +1,7 @@
 # resources.py
 
 import random
-from command_utils import get_integer_input
+from command_utils import get_task_by_worker, remove_task_by_id
 from constants import (
     RATION_PACKS, MAJOR_RESOURCES_ORDER, CHAIN_RESOURCES_ORDER, GATING_RULES, NORMAL_ITEM_RARITY, GATE_ITEM_RARITY, POST_CRITICAL_ITEM_RARITY,
     IDLE_CHARGE_USAGE, FULL_CHARGE, INITIAL_CHARGE, INITIAL_SEED_STASH, SEED_PACKETS_USED, NUM_DROIDS, LOW_CHARGE_FLAG, 
@@ -9,9 +9,9 @@ from constants import (
 )
 from items import REPLACEMENT, CHAIN, NOVELTY, JUNK, ITEM_DB, get_item_template
 from lore.lore_ingame import get_message
-from lore.user_interface import get_confirm, msg_power, get_integer_input
+from lore.user_interface import msg_power
 from planting import initialise_hydroponics_room
-from utils import get_task_by_worker, set_shield_state, clear_task_for_character
+from utils import set_shield_state
 
 def get_resource(resources, name):
     for res in resources:
@@ -430,12 +430,17 @@ def decrease_droid_charge(task_package):
             msg_power(get_message("charge", "getting_low", name=droid_name), turns_elapsed)
 
         if droid_stats["charge"] <= 0:
-            tasks, droids, humans, resources = interrupt_task_if_no_power(droid_name, droids, humans, resources, tasks, turns_elapsed)
+            tasks, droids, humans, resources = interrupt_task_if_no_power(droid_name, task_package)
 
     return task_package
 
 
-def interrupt_task_if_no_power(name, droids, humans, resources, tasks, turns_elapsed):
+def interrupt_task_if_no_power(name, task_package):
+    droids =  task_package["droids"]
+    humans =  task_package["humans"]
+    resources =  task_package["resources"]
+    tasks = task_package["tasks"]
+    turns_elapsed = task_package["counters"]["turns"]
     droid = droids[name]
 
     if droid["charge"] > 0:
@@ -461,123 +466,6 @@ def interrupt_task_if_no_power(name, droids, humans, resources, tasks, turns_ela
                     b["name"] = ""
                     b["reserved_by"] = ""
 
-        item_name = ""
-        humans, droids = clear_task_for_character(name, item_name, humans, droids)
-        del tasks[task_id]
+        remove_task_by_id(task_id, task_package)
 
     return tasks, droids, humans, resources
-
-
-def choose_vials_and_display_power_produced(name, task_package, amount_only=False):
-    # Estimate how much power this will produce
-    resources = task_package["resources"]
-    humans = task_package["humans"]
-    droids = task_package["droids"]
-    turns_elapsed = task_package["counters"]["turns"]
-    task_data = task_package.get("task_data", {})
-    return_msg = ""
-    total_power = 0
-    red = indigo = gold = 0
-    
-    power_supply = next((r for r in resources if r.get("name") == "PowerSupply"), None)
-    if not power_supply:
-        return_msg = get_message("refuel", "no_power_supply")
-        humans, droids = clear_task_for_character(name, "", humans, droids)  # Clear the task
-        return return_msg, task_package, red, indigo, gold
-
-    vial_store = power_supply.get("VialStore", {})
-    if not vial_store or all(v == 0 for v in vial_store.values()):
-        return_msg = get_message("refuel", "no_vials_fail", name=name)
-        humans, droids = clear_task_for_character(name, "", humans, droids)  # Clear the task
-        return return_msg, task_package, red, indigo, gold
-
-    if not amount_only:
-        # Ask if they want to use all vials or choose amounts
-        use_all = get_confirm("Would you like to use all available crystal vials for refuelling? (y/n): ", turns_elapsed)
-
-        red_avail = vial_store.get("red", 0)
-        indigo_avail = vial_store.get("indigo", 0)
-        gold_avail = vial_store.get("gold", 0)
-
-        if use_all:
-            red = red_avail
-            indigo = indigo_avail
-            gold = gold_avail
-
-            total_power = (
-                red * POWER_PER_RED +
-                indigo * POWER_PER_INDIGO +
-                gold * POWER_PER_GOLD
-            )
-            num_days = total_power // FULL_CHARGE
-
-            summary_msg = (
-                f"Using all vials will create {total_power} units of power "
-                f"(enough to charge a single droid for {num_days} days). Proceed? (y/n)"
-            )
-
-            if get_confirm(summary_msg, turns_elapsed):
-                # Zero out the store and return
-                vial_store["red"] = 0
-                vial_store["indigo"] = 0
-                vial_store["gold"] = 0
-                return_msg = f"{name} will now proceed to use all available vials to refuel the PowerSupply and add an extra {total_power} units and {num_days} days' worth of droid charges."
-                return return_msg, task_package, red, indigo, gold
-
-        while True:
-            red = get_integer_input(f"How many RED crystals to use for refuelling? (0–{red_avail}): ", 0, red_avail)
-            indigo = get_integer_input(f"How many INDIGO crystals to use for refuelling? (0–{indigo_avail}): ", 0, indigo_avail)
-            gold = get_integer_input(f"How many GOLD crystals to use for refuelling? (0–{gold_avail}): ", 0, gold_avail)
-
-            if red == 0 and indigo == 0 and gold == 0:
-                return_msg = "No crystals selected for processing. Task cancelled."
-                return return_msg, task_package, red, indigo, gold
-
-            total_power = (
-                red * POWER_PER_RED +
-                indigo * POWER_PER_INDIGO +
-                gold * POWER_PER_GOLD
-            )
-            num_days = total_power // FULL_CHARGE
-
-            summary_msg = (
-                f"Summary: {red} red, {indigo} indigo, {gold} gold vials will create {total_power} units of power "
-                f"(enough to charge 1 droid for {num_days} days). Proceed? (y/n)"
-            )
-
-            if get_confirm(summary_msg, turns_elapsed):
-                break  # Success
-            else:
-                retry = get_confirm("Would you like to choose different amounts? (y/n): ", turns_elapsed)
-                if not retry:
-                    return_msg = get_message("refuel", "aborted", name=name)
-                    return return_msg, task_package, red, indigo, gold
-                
-        return_msg = f"{name} is now going to refuel the PowerSupply with only the amounts you have chosen. This will add {total_power} units of power to the system. Enough to charge a single droid for {num_days} days."
-
-        # Remove the chosen amounts
-        vial_store["red"] -= red
-        vial_store["indigo"] -= indigo
-        vial_store["gold"] -= gold
-
-    else:   # We are summarising after the fact (this is the complete_refuel_task side of things), using task_data
-        if task_data:
-            red = task_data["red"]
-            indigo = task_data["indigo"]
-            gold = task_data["gold"]
-            
-        total_power = (
-            red * POWER_PER_RED +
-            indigo * POWER_PER_INDIGO +
-            gold * POWER_PER_GOLD
-        )
-
-        # Now we can add the power
-        power_supply["amount"] += total_power
-        
-        if total_power == 0:
-            return_msg = f"As there were no vials of crystal dust chosen, no power can be generated."
-        else:
-            return_msg = f"Total power added to the PowerSupply from {red} red crystal vials, {indigo} indigo crystal vials and {gold} gold crystal vials was {total_power} units."
-
-    return return_msg, task_package, red, indigo, gold

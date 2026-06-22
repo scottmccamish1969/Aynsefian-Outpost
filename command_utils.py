@@ -2,15 +2,15 @@
 
 import os
 
-from constants import (TASK_ASSIGNED, TASK_CHARGING, TASK_EXAMINING, TASK_EXPLORING, TASK_EATING, TASK_MINING, TASK_PLANTING, TASK_REAPING, 
-                       TASK_REFUELING, TASK_TOWING_DROID, AVAILABLE_FILES, POWER_PER_RED, POWER_PER_INDIGO, POWER_PER_GOLD, FULL_CHARGE)
+from constants import (TASK_ASSIGNED, TASK_CHARGING, TASK_EXAMINING, TASK_EXPLORING, TASK_EATING, TASK_MINING, TASK_PLANTING, TASK_REAPING, TASK_REFUELING,
+                       TASK_TOWING_DROID, AVAILABLE_FILES, POWER_PER_RED, POWER_PER_INDIGO, POWER_PER_GOLD, FULL_CHARGE, GENDERS, MALE, FEMALE)
 from lore.lore_ingame import get_message
 from lore.lore_story import get_story_message
 import lore.user_interface as ui_runtime
-from lore.user_interface import get_input, msg_story, msg_info, log_and_display, get_confirm, get_integer_input
-from utils import get_pronouns, clear_task_for_character, set_task_status_for_character
+from lore.user_interface import get_input, msg_story, msg_info, msg_error, log_and_display, get_confirm, get_integer_input
 
 
+# The all important function for getting things done
 def create_task(name, task_type, duration, task_package):
     tasks = task_package["tasks"]
     humans = task_package["humans"]
@@ -78,6 +78,157 @@ def create_task(name, task_type, duration, task_package):
 
     return return_msg, task_package
 
+
+def set_task_status_for_character(name, task_type, item_name, humans, droids, turns_elapsed):
+    #Updates a character's task and item fields to reflect what they're doing.
+    
+    if name in humans:
+        humans[name]["task"] = task_type
+        humans[name]["item"] = item_name
+    elif name in droids:
+        droids[name]["task"] = task_type
+        droids[name]["item"] = item_name
+    else:
+        msg_error(get_message("error", "unknown_assign", name=name), turns_elapsed)
+
+    return humans, droids
+
+
+def set_task_status_for_character(name, task_type, item_name, humans, droids, turns_elapsed):
+    # Updates a character's task and item fields.
+    # Character lookup is case-insensitive, while preserving the stored key.
+
+    supplied_name = str(name).strip()
+
+    human_name = next(
+        (key for key in humans if key.casefold() == supplied_name.casefold()),
+        None
+    )
+    droid_name = next(
+        (key for key in droids if key.casefold() == supplied_name.casefold()),
+        None
+    )
+
+    if human_name is not None:
+        humans[human_name]["task"] = task_type
+        humans[human_name]["item"] = item_name
+
+    elif droid_name is not None:
+        droids[droid_name]["task"] = task_type
+        droids[droid_name]["item"] = item_name
+
+    else:
+        msg_error(get_message("error", "character_not_found", name=name), turns_elapsed)
+
+    return humans, droids
+
+
+# Task clearing utility function
+def remove_task_by_name(name, task_package):
+    tasks = task_package["tasks"]
+    humans = task_package["humans"]
+    droids = task_package["droids"]
+
+    turns_elapsed = task_package["counters"]["turns"]
+
+    task_id, task = get_task_by_worker(tasks, name)
+    if not task:
+        msg_error(get_message("error", "no_existing_task", name=name), turns_elapsed)
+    else:
+        del tasks[task_id]
+        item_name = ""
+        humans, droids = clear_task_for_character(name, item_name, humans, droids)
+
+    return task_package
+
+
+def remove_task_by_id(task_id, task_package):
+    tasks = task_package["tasks"]
+    humans = task_package["humans"]
+    droids = task_package["droids"]
+    turns_elapsed = task_package["counters"]["turns"]
+
+    task = tasks.get(task_id)
+
+    if not task:
+        msg_error(get_message("error", "no_existing_task", name=task_id), turns_elapsed)
+        return task_package
+
+    name = task["name"]
+    del tasks[task_id]
+
+    humans, droids = clear_task_for_character(name, "", humans, droids)
+
+    return task_package
+
+
+def clear_task_for_character(name, item, humans, droids):
+    # Clears a character's task and item fields.
+    # Character lookup is case-insensitive, while preserving the stored key.
+
+    supplied_name = str(name).strip()
+
+    human_name = next(
+        (key for key in humans if key.casefold() == supplied_name.casefold()),
+        None
+    )
+    droid_name = next(
+        (key for key in droids if key.casefold() == supplied_name.casefold()),
+        None
+    )
+
+    if human_name is not None:
+        humans[human_name]["task"] = ""
+        humans[human_name]["item"] = ""
+
+    elif droid_name is not None:
+        droids[droid_name]["task"] = ""
+        droids[droid_name]["item"] = ""
+
+    else:
+        msg_error(get_message("error", "character_not_found", name=name))
+
+    return humans, droids
+
+
+def get_task_by_worker(tasks, worker_name):
+    # Returns (task_id, task_data) for the active task assigned to worker_name, or (None, None) if not found.
+    for tid, task in tasks.items():
+        if task.get("name") == worker_name:
+            return tid, task
+    return None, None
+
+
+def get_pronouns(name, is_human):
+    gender = GENDERS.get(name, 0)
+    if not is_human:
+        # Droids: always neuter regardless of name
+        return {
+            "p1": "They",
+            "p2": "Them",
+            "p3": "Its"
+        }
+    
+    if gender == FEMALE:
+        return {
+            "p1": "She",
+            "p2": "Her",
+            "p3": "Her"
+        }
+    elif gender == MALE:
+        return {
+            "p1": "He",
+            "p2": "Him",
+            "p3": "His"
+        }
+    else:
+        # Unknown or genderless human
+        return {
+            "p1": "They",
+            "p2": "Them",
+            "p3": "Their"
+        }
+    
 
 def handle_read_command(task_package, turns_elapsed, subject=None):
     # If no subject specified, enter local sub-loop
@@ -265,7 +416,7 @@ def choose_vials_for_refuel_cli(name, task_package, power_supply, vial_store):
     indigo_avail = vial_store.get("indigo", 0)
     gold_avail = vial_store.get("gold", 0)
 
-    use_all = get_confirm("Would you like to use all available crystal vials for refuelling? (y/n): ", turns_elapsed)
+    use_all = get_confirm("Would you like to use all available crystal vials for refuelling? (y/n): ", turns_elapsed=turns_elapsed)
 
     if use_all:
         red = red_avail
@@ -280,7 +431,7 @@ def choose_vials_for_refuel_cli(name, task_package, power_supply, vial_store):
             f"(enough to charge a single droid for {num_days} days). Proceed? (y/n)"
         )
 
-        if get_confirm(summary_msg, turns_elapsed):
+        if get_confirm(summary_msg, turns_elapsed=turns_elapsed):
             remove_vials_from_store(vial_store, red, indigo, gold)
 
             return_msg = (
@@ -308,7 +459,7 @@ def choose_vials_for_refuel_cli(name, task_package, power_supply, vial_store):
             f"(enough to charge 1 droid for {num_days} days). Proceed? (y/n)"
         )
 
-        if get_confirm(summary_msg, turns_elapsed):
+        if get_confirm(summary_msg, turns_elapsed=turns_elapsed):
             break
 
         retry = get_confirm("Would you like to choose different amounts? (y/n): ", turns_elapsed)

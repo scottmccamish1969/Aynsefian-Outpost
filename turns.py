@@ -3,8 +3,9 @@
 import random
 from datetime import datetime
 
-from commands import handle_immediate_or_queued_task, handle_reset_command
-from command_utils import handle_read_command
+from actions import handle_immediate_or_queued_task, start_next_queued_task_for_character
+from commands import handle_reset_command
+from command_utils import handle_read_command,  get_task_by_worker, remove_task_by_id
 from constants import TASK_ASSIGNED, TASK_EXAMINING, TASK_CHARGING, TASK_EATING, ALL_TASKS
 from endgame import check_endgame, handle_game_over_loop
 from lore.lore_ingame import get_message, handle_help_command
@@ -15,8 +16,7 @@ from planting import update_crop_growth
 from resources import decrease_droid_charge
 from status import handle_list_command
 from tasks import advance_tasks
-from utils import (is_command_enabled, load_config, process_hunger_status, check_shield_state, save_config, 
-                   update_screen, get_best_match, get_task_by_worker, clear_task_for_character)
+from utils import is_command_enabled, load_config, process_hunger_status, check_shield_state, save_config, update_screen, get_best_match
 
 
 def process_turn(command, task_package):
@@ -316,10 +316,10 @@ def complete_replace_command(answer, context):
 
     if answer and answer == "0":
         msg_info(get_message("replace", "not_replaced", name=character), turns_elapsed)
-        return task_package
+        return None    # This will not dock a turn
     elif not answer:
         msg_info(get_message("replace", "aborted"), turns_elapsed)
-        return task_package
+        return None    # This will not dock a turn
 
     # Now go ahead and process the new task
     new_task = answer
@@ -347,17 +347,14 @@ def complete_replace_command(answer, context):
     
     # It's a valid task, go ahead with it
     if new_task in ALL_TASKS:
-        task_id, task = get_task_by_worker(tasks, character)
+        remove_task_by_id(task_id, task_package)    # Remove the old task and clear the character's status
         old_task = task["type"]
-        del tasks[task_id]
-        item_name = ""
-        humans, droids = clear_task_for_character(character, item_name, humans, droids)
         msg_info(get_message("replace", "replacing", name=character, old_task=old_task, new_task=new_task), turns_elapsed)
 
     # It's an invalid task e.g. 'save_the_universe'
     else:
         msg_error(get_message("replace", "invalid_task", name=character, new_task=new_task), turns_elapsed)
-        return task_package   # This means it won't cost them a turn
+        return None   # This means it won't cost them a turn
 
     # Now process the new command
     qualifier = character
@@ -545,7 +542,6 @@ def complete_cancel_command(answer, context):
             return task_package
 
         if choice == "1":
-            # cancel current task
             if current_task_type in (TASK_EATING, TASK_CHARGING):
                 msg_warn(get_message("cancel", "cannot_interrupt", name=character, task=current_task_type), turns_elapsed)
                 return task_package
@@ -555,14 +551,19 @@ def complete_cancel_command(answer, context):
                 return task_package
 
             old_task = tasks[task_id]["type"]
-            del tasks[task_id]
-
-            humans, droids = clear_task_for_character(character, "", humans, droids)
-            task_package["humans"] = humans
-            task_package["droids"] = droids
+            remove_task_by_id(task_id, task_package)
 
             msg_info(get_message("cancel", "current_cancelled", name=character, task=old_task), turns_elapsed)
-            task_package = resume_turn_processing(task_package)
+
+            if not queued_slots:
+                msg_info(get_message("cancel", "no_queued_tasks", name=character), turns_elapsed)
+                return task_package
+
+            awaiting_input, task_package = start_next_queued_task_for_character(character, task_package)
+
+            if awaiting_input:
+                return None
+
             return task_package
 
         if choice == "2":

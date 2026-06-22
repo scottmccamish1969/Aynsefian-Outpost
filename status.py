@@ -423,7 +423,7 @@ def list_food(task_package):
     msg_plant("", turns_elapsed)
     msg_plant(" MATURE CROPS:", turns_elapsed)
     mature_count = 0
-    for crop in crops:
+    for crop in crops.values():
         if crop.get("mature", False):
             mature_count += 1
     if mature_count == 0:
@@ -431,8 +431,8 @@ def list_food(task_package):
     else:
         msg_plant(f"  *Mature crops = {mature_count}*", turns_elapsed)
         for tid, task in tasks.items():
-            if task[tid]["type"] == TASK_REAPING:
-                msg_plant(f"Crops being reaped by: {task["name"]}")
+            if task["type"] == TASK_REAPING:
+                msg_plant(f"Crops being reaped by: {task["name"]}", turns_elapsed)
 
     # --- HYDROPONICS STATUS ---
     hydro = next((r for r in resources if r.get("name") == "HydroponicsRoom"), None)
@@ -650,10 +650,10 @@ def list_crystals(task_package):
 
     # --- Totals ---
     if crystals:
-        msg_crystal("\nTOTAL CRYSTALS FOUND:")
-        msg_crystal(f"   Red: {crystals["total_found"]["red"]}  Indigo: {crystals["total_found"]["indigo"]}  Gold: {crystals["total_found"]["gold"]}")
-        msg_crystal("\nTOTAL CRYSTALS PROCESSED:")
-        msg_crystal(f"   Red: {crystals["processed"]["red"]}  Indigo: {crystals["processed"]["indigo"]}  Gold: {crystals["processed"]["gold"]}")
+        msg_crystal("\nTOTAL CRYSTALS FOUND:", turns_elapsed)
+        msg_crystal(f"   Red: {crystals["total_found"]["red"]}  Indigo: {crystals["total_found"]["indigo"]}  Gold: {crystals["total_found"]["gold"]}", turns_elapsed)
+        msg_crystal("\nTOTAL CRYSTALS PROCESSED:", turns_elapsed)
+        msg_crystal(f"   Red: {crystals["processed"]["red"]}  Indigo: {crystals["processed"]["indigo"]}  Gold: {crystals["processed"]["gold"]}", turns_elapsed)
 
     # --- Crystal combination - if found ---
     crystal_combination = next((r for r in resources if r.get("name") == "CrystalCombination"), None)

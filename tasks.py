@@ -2,8 +2,9 @@
 
 import random
 
-from commands import handle_immediate_or_queued_task, initiate_charge_task
-from command_utils import create_task
+from actions import start_next_queued_task_for_character
+from commands import initiate_charge_task, clear_task_for_character
+from command_utils import create_task, get_pronouns, get_task_by_worker, remove_task_by_id, remove_task_by_name, choose_vials_and_display_power_produced
 from constants import (TASK_EATING, TASK_CHARGING, TASK_EXPLORING, TASK_PLANTING, TASK_EXAMINING, TASK_REAPING, TASK_MINING, TASK_ASSIGNED, TASK_REFUELING, TASK_TOWING_DROID,
                        RATION_PACKS, GROWTH_TURNS, YIELD_RANGE, CRYSTAL_RATIO, BASE_CRYSTAL_YIELD, TASK_LENGTH, INITIAL_SEED_STASH, REAP_SEED_FRACTION, SEED_PACKETS_USED)
 from lore.lore_ingame import get_message
@@ -11,9 +12,9 @@ import lore.user_interface as ui_runtime
 from lore.user_interface import (get_input, msg_plant, msg_explore, msg_resource, msg_power, msg_food, msg_shield, msg_mine, msg_crystal,
                                  msg_error, msg_warn, log_and_display)
 from planting import update_food_amount, feed_human
-from queuing import get_next_task_from_queue_if_any, get_character_status, do_auto_charge, do_auto_feed
-from resources import charge_droid, attempt_exploration, react_to_found_resource, add_or_get_discovered_item, choose_vials_and_display_power_produced
-from utils import get_pronouns, set_shield_state, clear_task_for_character, get_task_by_worker, set_examine_needed_after_explore, save_config
+from queuing import get_character_status, do_auto_charge, do_auto_feed
+from resources import charge_droid, attempt_exploration, react_to_found_resource, add_or_get_discovered_item
+from utils import set_shield_state, set_examine_needed_after_explore, save_config
 
 
 def advance_tasks(task_package):
@@ -37,6 +38,7 @@ def advance_tasks(task_package):
 
         is_examining = nothing_found = False
         completed_msg = ""
+        item_found = ""
 
         if task_type == TASK_EATING:
             completed_msg, task_package = complete_feed_task(name, task_package)
@@ -46,9 +48,11 @@ def advance_tasks(task_package):
             msg_power(completed_msg, turns_elapsed)
         elif task_type == TASK_EXPLORING:
             completed_msg, is_examining, nothing_found, awaiting_input, task_package = complete_explore_task(name, task_package)
+            item_found = task_package["item"]
             if awaiting_input:
+                remove_task_by_id(task_id, task_package)
                 return awaiting_input, task_package
-            elif is_examining or nothing_found:
+            elif is_examining or nothing_found or (item_found == "FoodStore"):
                 msg_resource(completed_msg, turns_elapsed)
             else:  # This will be an auto-feed or auto-charge
                 if name in humans:
@@ -88,19 +92,15 @@ def advance_tasks(task_package):
             completed_msg = get_message("task", "unknown", name=name, task_type=task_type.lower())
             msg_error(completed_msg, turns_elapsed)
 
-        # Remove task from registry
-        if task_id in tasks:
-            del tasks[task_id]
+        # Remove the task
+        remove_task_by_id(task_id, task_package)
 
-        # Now try to pull from the queue (unless currently examining)
         if not is_examining:
-            next_action, character, awaiting_input, task_package = get_next_task_from_queue_if_any(name, task_package)
-            if awaiting_input:
-                return awaiting_input, task_package
+            awaiting_input, task_package = start_next_queued_task_for_character(name, task_package)
 
-            # Attempt to initiate queued task (if any)
-            if next_action:
-                valid_command, task_package = handle_immediate_or_queued_task(next_action, character, task_package)
+        # Need to exit the loop early if we are needing a response from the player
+        if awaiting_input:
+            return awaiting_input, task_package
 
     return awaiting_input, task_package
 
@@ -133,7 +133,7 @@ def complete_charge_task(name, task_package):
     # Now we can charge the droid
     if name in droids:
         return_msg, droids, resources = charge_droid(name, droids, resources, turns_elapsed)
-        humans, droids = clear_task_for_character(name, "", humans, droids)
+    
     return return_msg, task_package
 
 
@@ -155,6 +155,7 @@ def complete_explore_task(name, task_package):
     discovered_name, task_package = attempt_exploration(task_package)
 
     if discovered_name:
+
         if isinstance(discovered_name, dict):
             discovered_name = discovered_name.get("name", None)
         elif not isinstance(discovered_name, str):
@@ -200,7 +201,7 @@ def complete_explore_task(name, task_package):
                         "task_package": task_package,
                         "character_name": name,
                         "item": discovered,
-                        "item_name": discovered_name,
+                        "item_name": res_name,
                         "is_human": is_human,
                         "is_examining": False
                     }
@@ -236,18 +237,16 @@ def handle_examine_answer(answer, context):
     tasks = task_package["tasks"]
     turns_elapsed = task_package["counters"]["turns"]
 
-    if answer and answer and answer.lower() in ("y", "yes"):
+    if answer and answer.lower() in ("y", "yes"):
         return_msg, is_examining, task_package = examine_after_explore(task_package, name, item, item_name, is_human, False)
         msg_resource(return_msg, turns_elapsed)
 
         # If they are not now engaged in a new examine task,
         # allow them to pull the next queued task immediately.
-        if not is_examining:
-            next_action, character, awaiting_input, task_package = get_next_task_from_queue_if_any(name, task_package)
+        if not is_examining:                
+            awaiting_input, task_package = start_next_queued_task_for_character(name, task_package)
             if awaiting_input:
                 return task_package
-            if next_action:
-                valid_command, task_package = handle_immediate_or_queued_task(next_action, character, task_package)
 
     else:
         humans = task_package["humans"]
@@ -261,15 +260,11 @@ def handle_examine_answer(answer, context):
         task_package["droids"] = droids
 
         # Remove the existing explore task
-        task_id, active_task = get_task_by_worker(tasks, name)
-        if task_id is not None:
-            del tasks[task_id]
-
-        next_action, character, awaiting_input, task_package = get_next_task_from_queue_if_any(name, task_package)
+        remove_task_by_name(name, task_package)
+  
+        awaiting_input, task_package = start_next_queued_task_for_character(name, task_package)
         if awaiting_input:
             return task_package
-        if next_action:
-            valid_command, task_package = handle_immediate_or_queued_task(next_action, character, task_package)
 
     # The question is now resolved, so the suspended turn may continue.
     task_package["gamestate"]["turn_suspended"] = False
@@ -303,11 +298,6 @@ def examine_after_explore(task_package, character_name, item, item_name, is_huma
             task_now_doing = droids[character_name]["task"]
             droids[character_name]["generated"] = True
 
-        # Remove the existing explore task
-        task_id, active_task = get_task_by_worker(tasks, character_name)
-        if task_id is not None:
-            del tasks[task_id]
-
         # Create the Examine task
         return_msg, task_package = create_task(character_name, task_type, duration, task_package)
         is_examining = True
@@ -321,11 +311,6 @@ def examine_after_explore(task_package, character_name, item, item_name, is_huma
         return_msg = formatted_msg
         item["examined"] = True
         item["msg"] = new_msg
-
-        # Remove the existing explore task
-        task_id, active_task = get_task_by_worker(tasks, character_name)
-        if task_id is not None:
-            del tasks[task_id]
             
         humans, droids = clear_task_for_character(character_name, "", humans, droids) # Clear the task if instant examine
                     
@@ -333,7 +318,7 @@ def examine_after_explore(task_package, character_name, item, item_name, is_huma
 
 
 def complete_plant_task(name, task_package):
-    task_data = task_package["task_data"]
+    tasks = task_package["tasks"]
     resources = task_package["resources"]
     humans = task_package["humans"]
     droids = task_package["droids"]
@@ -342,6 +327,13 @@ def complete_plant_task(name, task_package):
     turns_elapsed = task_package["counters"]["turns"]
     return_msg = ""
 
+    # We are now using the task_data inside the task, rather than the global task_data dict
+    task_id, task = get_task_by_worker(tasks, name)
+    if not task:
+        msg_error(get_message("error", "no_existing_task", name=name), turns_elapsed)
+        return return_msg, task_package
+    task_data = tasks[task_id]["task_data"]
+    
     # Complete the planting of what was advised
     orders = task_data["orders"]
     worker = task_data["worker"]
@@ -746,7 +738,7 @@ def complete_refuel_task(name, task_package):
 
     amount_only = True
 
-    return_msg, total_power, task_package, red, indigo, gold = choose_vials_and_display_power_produced(name, task_package, amount_only=amount_only )
+    return_msg, total_power, task_package, red, indigo, gold = choose_vials_and_display_power_produced(name, task_package, amount_only=amount_only)
 
     if return_msg != "" and total_power == 0:
         humans, droids = clear_task_for_character(name, "", humans, droids)

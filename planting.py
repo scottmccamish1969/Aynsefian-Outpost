@@ -1,14 +1,14 @@
 # planting.py
 
 import random
-from command_utils import create_task
+from command_utils import create_task, get_pronouns
 from constants import SERVING_VALUE, HYDROPONICS_BED_MIN, HYDROPONICS_BED_MAX, SEED_PACKETS_USED, TASK_PLANTING, FOOD_PER_DAY, NUM_HUMANS, TASK_LENGTH
 from lore.lore_ingame import get_message
 import lore.user_interface as ui_runtime
 from lore.user_interface import get_input, msg_plant, msg_food
 from queuing import is_idle, add_to_queue
 from status import display_character_summary
-from utils import process_hunger_status, can_character_act, get_pronouns
+from utils import process_hunger_status, can_character_act
 
 
 def feed_human(name, task_package):
@@ -300,7 +300,7 @@ def determine_what_to_plant_and_where(raw_target, task_package):
         answer = get_input("plant", "who_plants", turns_elapsed)
 
         if answer == ui_runtime.GUI_PENDING:
-            return False, None, None, task_package
+            return None
 
         context["raw_target"] = answer
         return continue_determine_what_to_plant_and_where(context)
@@ -425,8 +425,7 @@ def return_plant_failure(context):
     if context.get("from_gui_callback", False):
         return task_package
 
-    # This should only be for a CLI run, which we most likely won't need in the future
-    return False, None, None, task_package
+    return None
 
 
 def resume_plant_default(answer, context):
@@ -464,6 +463,9 @@ def resume_plant_how_many(answer, context):
     task_package = context["task_package"]
     turns_elapsed = task_package["counters"]["turns"]
     free_beds = context["free_beds"]
+    name = context["worker_name"]
+    humans = task_package["humans"]
+    is_human = name in humans
 
     try:
         num_beds_needed = int(answer)
@@ -472,6 +474,10 @@ def resume_plant_how_many(answer, context):
         return return_plant_failure(context)
 
     if num_beds_needed == 0:
+        context["from_gui_callback"] = False
+        is_are = "are" if not is_human else "is"
+        pronoun = get_pronouns(name, is_human)['p1']
+        msg_plant(get_message("plant", "aborted", target=name, pronoun=pronoun, is_are=is_are), turns_elapsed, tone="error")
         return return_plant_failure(context)
 
     if num_beds_needed < 0 or num_beds_needed > free_beds:

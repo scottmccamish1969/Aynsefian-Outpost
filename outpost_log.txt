@@ -1,0 +1,119 @@
+==============================================
+🕓 Log started on 2026-06-22 20:09:10
+==============================================
+
+Day 0, Turn 0: 🧭  . . . the Outpost has been reset.
+Day 0, Turn 0: 🔎 You have sent Niobe wandering aimlessly for 4 turns. Now go do something else, Commander, and hope for the best.
+Day 0, Turn 0: 🔎 You have sent Alex to explore. It's either courage or confusion. Either way, we wait 3 turns to find out.
+Day 0, Turn 0: 🔎 You send Carrie on a mission from God. That means it's possible she could find something special in 2 turns.
+Day 0, Turn 0: 🔎 You watch Hariet walk off into the haze, mumbling about destiny. You think she'll return in 2 turns. Probably.
+Day 0, Turn 1: 🔎 Niobe is busy exploring. Exploring has been added to their queued tasks.
+Day 0, Turn 1: 🔎 Alex is busy exploring. Exploring has been added to their queued tasks.
+Day 0, Turn 1: 🔎 Carrie is busy exploring. Exploring has been added to their queued tasks.
+Day 0, Turn 1: 🔎 Hariet is busy exploring. Exploring has been added to their queued tasks.
+Day 0, Turn 2: 🔎 Niobe is busy exploring. Exploring has been added to their queued tasks.
+Day 0, Turn 2: 🔎 Alex is busy exploring. Exploring has been added to their queued tasks.
+Day 0, Turn 2: 🔎 Carrie is busy exploring. Exploring has been added to their queued tasks.
+Day 0, Turn 2: 🔎 Hariet is busy exploring. Exploring has been added to their queued tasks.
+Day 0, Turn 2: 📦 Carrie has found the FoodStore. It contains a stash of [20] long-life ration packs. Your Outpost will find this particularly useful - in the short term.
+ 🔎 --> She is now Exploring.
+Day 0, Turn 2: 🔎 You watch Carrie walk off into the haze, mumbling about destiny. You think she'll return in 3 turns. Probably.
+Day 0, Turn 2: ❓ Hariet has found **PowerSupply**.  Do you want her to examine it? (y/n)Day 0, Turn 2: 📦 PowerSupply will now face a thorough examination from Hariet, for 4 turns, using what she says is a 'fine tooth comb', but you've never seen one of those before.
+Day 0, Turn 3: ❓ Which human or droid's task(s) would you like to cancel?Day 0, Turn 3: 📜 You are in charge of this outpost, Commander. It will protect all of Aynsefian.
+You must keep it running, or we will all die at the hands of the MGC. Please don't fail us!
+
+Day 0, Turn 3: ℹ️ Type 'help' for a list of commands or 'quit' to exit the game.
+Day 0, Turn 3: ❓ Which human or droid's task(s) would you like to cancel?Day 0, Turn 3: ❓ Niobe is currently Exploring (2 turns remaining) with queued tasks: 1:Exploring, 2:Exploring
+1. Cancel current task
+2. Cancel a queued task
+0. AbortDay 0, Turn 3: 📜 You are in charge of this outpost, Commander. It will protect all of Aynsefian.
+You must keep it running, or we will all die at the hands of the MGC. Please don't fail us!
+
+Day 0, Turn 3: ℹ️ Type 'help' for a list of commands or 'quit' to exit the game.
+Day 0, Turn 3: ❓ Which human or droid's task(s) would you like to cancel?Day 0, Turn 3: 📜 You are in charge of this outpost, Commander. It will protect all of Aynsefian.
+You must keep it running, or we will all die at the hands of the MGC. Please don't fail us!
+
+Day 0, Turn 3: ℹ️ Type 'help' for a list of commands or 'quit' to exit the game.
+Day 0, Turn 3: ❓ Which human or droid's task(s) would you like to cancel?Day 0, Turn 3: ❓ Niobe is currently Exploring (2 turns remaining) with queued tasks: 1:Exploring, 2:Exploring
+1. Cancel current task
+2. Cancel a queued task
+0. AbortDay 0, Turn 3: 🧭 Niobe's current task of Exploring has been cancelled.
+ 🔎 --> She is now Exploring.
+Day 0, Turn 3: 🔎 Exploration underway. Niobe is whistling a tune no one recognises. Results expected in 3 turns.
+Day 0, Turn 3: 📦 Alex reports that he has explored the wider Outpost area but found nothing of value.
+ 🔎 --> He is now Exploring.
+Day 0, Turn 3: 🔎 Exploring assigned to Alex. Forlorn hopes of finding something important will end in 4 turns.
+Day 0, Turn 4: ⚡ Charging of Mike has commenced. It will complete in 3 turns.
+Day 0, Turn 4: ⚡ Charging of Terry has commenced. It will complete in 3 turns.
+Day 0, Turn 4: ⚡ Charging of Karla has commenced. It will complete in 3 turns.
+Day 0, Turn 4: ⚡ Charging of Rin has commenced. It will complete in 3 turns.
+Day 0, Turn 5: 🔎 Niobe is busy exploring. Exploring has been added to their queued tasks.
+Day 0, Turn 5: 🔎 Alex is busy exploring. Exploring has been added to their queued tasks.
+Day 0, Turn 5: 🔎 Carrie is busy exploring. Exploring has been added to their queued tasks.
+Day 0, Turn 5: 🔎 Hariet is busy examining. Exploring has been added to their queued tasks.
+Day 0, Turn 5: 🔎 Mike is busy charging. Exploring has been added to their queued tasks.
+Day 0, Turn 5: 🔎 Terry is busy charging. Exploring has been added to their queued tasks.
+Day 0, Turn 5: 🔎 Karla is busy charging. Exploring has been added to their queued tasks.
+Day 0, Turn 5: 🔎 Rin is busy charging. Exploring has been added to their queued tasks.
+Day 0, Turn 5: ❓ Carrie has found **SeedStash**.  Do you want her to examine it? (y/n)Day 0, Turn 5: 📦 There will be 4 turns where Carrie is now engaged in trying to comprehend the deeper mysteries of 'SeedStash'. At least she won't set fire to anything for that amount of time.
+Day 0, Turn 6: 🔎 Niobe is busy exploring. Exploring has been added to their queued tasks.
+Day 0, Turn 6: 🔎 Alex is busy exploring. Exploring has been added to their queued tasks.
+Day 0, Turn 6: 🔎 Carrie is busy examining. Exploring has been added to their queued tasks.
+Day 0, Turn 6: 🧭 There is no more room on Hariet's task queue for any more taskings. You can't add 'exploring' until later.
+Day 0, Turn 6: 🔎 Mike is busy charging. Exploring has been added to their queued tasks.
+Day 0, Turn 6: 🔎 Terry is busy charging. Exploring has been added to their queued tasks.
+Day 0, Turn 6: 🔎 Karla is busy charging. Exploring has been added to their queued tasks.
+Day 0, Turn 6: 🔎 Rin is busy charging. Exploring has been added to their queued tasks.
+Day 0, Turn 6: 📦 Hariet has finished examining **PowerSupply**: The power supply will eventually need vials of crystal dust. Initial charge level: 15000 units.
+ 🔎 --> She is now Exploring.
+Day 0, Turn 6: 🔎 You're not sure if Hariet will be remembered as one of the great explorers of human history, but she'll look for something useful in the Outpost for 4 turns anyway.
+Day 0, Turn 6: ❓ Niobe has found **WaterSource**.  Do you want her to examine it? (y/n)Day 0, Turn 6: ❌ 🧭 DEVELOPER: Task does not exist for Niobe.
+Day 0, Turn 6: 📦 WaterSource: An essential supply of aqua pura for varying uses in this fledgling Outpost.
+ 🔎 --> She is now Exploring.
+Day 0, Turn 6: 🔎 You're not sure if Niobe will be remembered as one of the great explorers of human history, but she'll look for something useful in the Outpost for 3 turns anyway.
+Day 0, Turn 7: ⚠️ 🍏 Alex is hungry and wants to eat.
+Day 0, Turn 7: ⚠️ 🍏 Carrie is hungry and wants to eat.
+Day 0, Turn 7: 🔎 Niobe is busy exploring. Exploring has been added to their queued tasks.
+Day 0, Turn 7: 🧭 Alex's queue is full and the exploring task cannot be added. Ye gods, man, ease up!  You can check a human or droid's queue by using 'edit queue'.
+Day 0, Turn 7: 🧭 Carrie has already been loaded up with enough tasks. The exploring task  cannot be added to their queue. Use 'replace' or 'cancel' if you feel the need to modify their tasks.
+Day 0, Turn 7: 🔎 Hariet is busy exploring. Exploring has been added to their queued tasks.
+Day 0, Turn 7: 🔎 Mike is busy charging. Exploring has been added to their queued tasks.
+Day 0, Turn 7: 🔎 Terry is busy charging. Exploring has been added to their queued tasks.
+Day 0, Turn 7: 🔎 Karla is busy charging. Exploring has been added to their queued tasks.
+Day 0, Turn 7: 🔎 Rin is busy charging. Exploring has been added to their queued tasks.
+Day 0, Turn 7: 📦 You suspect Alex might have been having a nap somewhere because he has returned from his search with absolutely nothing.
+ 🍏 Alex has gone off for his meal break. He will be back to work in 1 turn.
+Day 0, Turn 7: ⚡ Mike is now re-charged up to 1000 units.
+ 🔎 --> They are now Exploring.
+Day 0, Turn 7: 🔎 You have sent Mike wandering aimlessly for 4 turns. Now go do something else, Commander, and hope for the best.
+Day 0, Turn 7: ⚡ Terry is now re-charged up to 1000 units.
+ 🔎 --> They are now Exploring.
+Day 0, Turn 7: 🔎 Exploration underway. Terry is whistling a tune no one recognises. Results expected in 5 turns.
+Day 0, Turn 7: ⚡ Karla is now re-charged up to 1000 units.
+ 🔎 --> They are now Exploring.
+Day 0, Turn 7: 🔎 Exploration underway. Karla is whistling a tune no one recognises. Results expected in 4 turns.
+Day 0, Turn 7: ⚡ Rin is now re-charged up to 1000 units.
+ 🔎 --> They are now Exploring.
+Day 0, Turn 7: 🔎 Rin has started looking around. Maybe they will find something of use in 4 turns. Or they may find nothing.
+Day 0, Turn 8: 🧭 Niobe's queue is full and the exploring task cannot be added. Ye gods, man, ease up!  You can check a human or droid's queue by using 'edit queue'.
+Day 0, Turn 8: 🧭 Alex has already been loaded up with enough tasks. The exploring task  cannot be added to their queue. Use 'replace' or 'cancel' if you feel the need to modify their tasks.
+Day 0, Turn 8: 🧭 There is no more room on Carrie's task queue for any more taskings. You can't add 'exploring' until later.
+Day 0, Turn 8: 🧭 Hariet has already been loaded up with enough tasks. The exploring task  cannot be added to their queue. Use 'replace' or 'cancel' if you feel the need to modify their tasks.
+Day 0, Turn 8: 🔎 Mike is busy exploring. Exploring has been added to their queued tasks.
+Day 0, Turn 8: 🔎 Terry is busy exploring. Exploring has been added to their queued tasks.
+Day 0, Turn 8: 🔎 Karla is busy exploring. Exploring has been added to their queued tasks.
+Day 0, Turn 8: 🔎 Rin is busy exploring. Exploring has been added to their queued tasks.
+Day 0, Turn 8: 🍏 Alex forced down a ration pack. Nobody spoke. Nobody asked how it was. It was... fine. Probably. 💬
+ 🔎 --> He is now Exploring.
+Day 0, Turn 8: 🔎 Alex has started looking around. Maybe he will find something of use in 4 turns. Or he may find nothing.
+Day 0, Turn 9: ⚠️ 🍏 Niobe is hungry and wants to eat.
+Day 0, Turn 9: ⚠️ 🍏 Hariet is hungry and wants to eat.
+Day 0, Turn 9: 📦 Carrie has finished examining **SeedStash**: You found a seed vault! Many varieties for hydroponic growth. There are 219 apple seeds, 121 potato seeds and 60 cabbage seeds.
+ 🍏 Carrie has gone off for her meal break. She will be back to work in 1 turn.
+Day 0, Turn 9: 📦 Niobe says she is *famished* and will maybe check out the **ThreePacksOfSocks** when she's had some food. You can't blame her for this decision. You'd do the same.
+Day 0, Turn 9: 🍏 Niobe has gone off for her meal break. She will be back to work in 1 turn.
+ 
+ 🍏 Niobe has gone off for her meal break. She will be back to work in 1 turn.
+Day 1, Turn 10: 📜 ------------------------------------------------------------
+Day 1, Turn 10: 📜 End of Day 1: Chief Engineer Jinekali says that once you've found the seeds, the water and the hydroponics room you can plant crops. That's in case there's not enough food there.
+Day 1, Turn 10: 📜 ------------------------------------------------------------

@@ -132,7 +132,17 @@ def get_input(category, code, turns_elapsed=0, end=None, **kwargs):
 
 
 def get_confirm(prompt, turns_elapsed=None, callback=None, context=None):
+    if turns_elapsed is None:
+        turns_elapsed = 0
+
     if UI_MODE == "gui" and ACTIVE_UI is not None:
+        if callback is None:
+            msg_error("DEVELOPER: get_confirm called in GUI mode without callback.", turns_elapsed)
+            return False
+
+        msg_question(prompt, turns_elapsed, end='')
+        ACTIVE_UI.set_command_prompt(prompt)
+
         ACTIVE_UI.set_pending_question(
             callback=callback,
             context={
@@ -147,11 +157,19 @@ def get_confirm(prompt, turns_elapsed=None, callback=None, context=None):
     return answer in ("y", "yes")
 
 
-def get_integer_input(prompt, min_value=None, max_value=None, callback=None, context=None):
+def get_integer_input(prompt, min_value=None, max_value=None, *, turns_elapsed=0, callback=None, context=None):
     # Prompts the user for an integer input, validates, and returns it.
-    # In GUI mode, sets a pending question and returns GUI_PENDING.
-    
+    # In GUI mode, displays the question, sets the command prompt,
+    # sets a pending callback, and returns GUI_PENDING.
+
     if UI_MODE == "gui" and ACTIVE_UI is not None:
+        if callback is None:
+            msg_error("DEVELOPER: get_integer_input called in GUI mode without callback.", turns_elapsed)
+            return ""
+
+        msg_question(prompt, turns_elapsed, end='')
+        ACTIVE_UI.set_command_prompt(prompt)
+
         ACTIVE_UI.set_pending_question(
             callback=callback,
             context={
@@ -164,8 +182,10 @@ def get_integer_input(prompt, min_value=None, max_value=None, callback=None, con
 
         return GUI_PENDING
 
+    # CLI legacy fallback. Safe to keep for now, even if rarely used.
     while True:
         user_input = input(prompt)
+
         try:
             value = int(user_input)
 
@@ -181,7 +201,6 @@ def get_integer_input(prompt, min_value=None, max_value=None, callback=None, con
 
         except ValueError:
             print("❌ Invalid input. Please enter a valid integer.")
-
 
 
 def normalise_command(command_str):

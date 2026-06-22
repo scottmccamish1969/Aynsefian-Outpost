@@ -5,12 +5,13 @@ import os
 import random
 import difflib
 
+from command_utils import clear_task_for_character, get_pronouns, get_task_by_worker, remove_task_by_id
+from constants import (NAMES, INITIAL_GAMESTATE, CONFIG_FILE, LOG_FILE, LOG_FILE_OLD, FEMALE, MALE, GENDERS, HUNGER, LOW_CHARGE_FLAG, IDLE_CHARGE_USAGE,
+    NUM_HUMANS, NUM_DROIDS, HUNGER_WARNING, TASK_ASSIGNED, TASK_PLANTING, TASK_EATING, TASK_EXPLORING, TASK_MINING, TASK_CHARGING, COMMAND_MAP)
 from lore.lore_ingame import get_message
 from lore.lore_story import print_orders
 import lore.user_interface as ui_runtime
 from lore.user_interface import get_input, msg_resource, msg_food, msg_error, msg_info, msg_power, log_and_display
-from constants import (NAMES, INITIAL_GAMESTATE, CONFIG_FILE, LOG_FILE, LOG_FILE_OLD, FEMALE, MALE, GENDERS, HUNGER, LOW_CHARGE_FLAG, IDLE_CHARGE_USAGE,
-    NUM_HUMANS, NUM_DROIDS, HUNGER_WARNING, TASK_ASSIGNED, TASK_PLANTING, TASK_EATING, TASK_EXPLORING, TASK_MINING, TASK_CHARGING, COMMAND_MAP)
 from OutpostUI import get_top_bar_data
 from status import display_character_summary, get_state_panel_text
 
@@ -23,37 +24,6 @@ def update_screen(task_package):
 
         state_text = get_state_panel_text(task_package)
         ui_runtime.ACTIVE_UI.set_state_text(state_text)
-
-
-def get_pronouns(name, is_human):
-    gender = GENDERS.get(name, 0)
-    if not is_human:
-        # Droids: always neuter regardless of name
-        return {
-            "p1": "They",
-            "p2": "Them",
-            "p3": "Its"
-        }
-    
-    if gender == FEMALE:
-        return {
-            "p1": "She",
-            "p2": "Her",
-            "p3": "Her"
-        }
-    elif gender == MALE:
-        return {
-            "p1": "He",
-            "p2": "Him",
-            "p3": "His"
-        }
-    else:
-        # Unknown or genderless human
-        return {
-            "p1": "They",
-            "p2": "Them",
-            "p3": "Their"
-        }
 
 
 def is_command_enabled(command, gamestate):
@@ -370,18 +340,9 @@ def interrupt_task_if_starving(name, human, task_package):
                 b["name"] = ""
                 b["reserved_by"] = ""
 
-    humans, droids = clear_task_for_character(name, human["item"], humans, droids)
-    del tasks[task_id]
+    remove_task_by_id(task_id, task_package)    # Remove the old task and clear the character's status
 
     return task_package
-
-
-def get_task_by_worker(tasks, worker_name):
-    # Returns (task_id, task_data) for the active task assigned to worker_name, or (None, None) if not found.
-    for tid, task in tasks.items():
-        if task.get("name") == worker_name:
-            return tid, task
-    return None, None
 
 
 def can_character_act(character, task_name, humans, droids, turns_elapsed):
@@ -536,47 +497,6 @@ def set_shield_state(requirement, droids, resources, shieldstate):
     )
 
     return shieldstate
-
-
-def set_task_status_for_character(name, task_type, item_name, humans, droids, turns_elapsed):
-    #Updates a character's task and item fields to reflect what they're doing.
-    
-    if name in humans:
-        humans[name]["task"] = task_type
-        humans[name]["item"] = item_name
-    elif name in droids:
-        droids[name]["task"] = task_type
-        droids[name]["item"] = item_name
-    else:
-        msg_error(get_message("error", "unknown_assign", name=name), turns_elapsed)
-
-    return humans, droids
-
-
-def clear_task_for_character(name, item, humans, droids):
-    # Clears a character's task and item fields, and handles any special cases like the shield.
-    
-    if name in humans:
-        humans[name]["task"] = ""
-        humans[name]["item"] = ""
-    elif name in droids:
-        droids[name]["task"] = ""
-        droids[name]["item"] = ""
-    else:
-        msg_error(get_message("error", "unknown_assign", name=name))
-        return humans, droids
-
-    # Handle shield logic (if no one else is still assigned to it)
-    if item == "CloakingShield":
-        still_assigned = any(
-            char.get("item") == "CloakingShield"
-            for char in list(humans.values()) + list(droids.values())
-        )
-        if not still_assigned:
-            # If needed, update shieldstate externally in calling function
-            pass  # Replace with logic if desired
-
-    return humans, droids
 
 
 def parse_integer_answer(answer, min_value=None, max_value=None):
