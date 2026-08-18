@@ -1,17 +1,16 @@
 # resources.py
 
 import random
-from command_utils import get_task_by_worker, remove_task_by_id
-from constants import (
-    RATION_PACKS, MAJOR_RESOURCES_ORDER, CHAIN_RESOURCES_ORDER, GATING_RULES, NORMAL_ITEM_RARITY, GATE_ITEM_RARITY, POST_CRITICAL_ITEM_RARITY,
-    IDLE_CHARGE_USAGE, FULL_CHARGE, INITIAL_CHARGE, INITIAL_SEED_STASH, SEED_PACKETS_USED, NUM_DROIDS, LOW_CHARGE_FLAG, 
-    TASK_CHARGING, TASK_ASSIGNED, TASK_PLANTING, TASK_EXAMINING, POWER_PER_RED, POWER_PER_INDIGO, POWER_PER_GOLD
-)
-from items import REPLACEMENT, CHAIN, NOVELTY, JUNK, ITEM_DB, get_item_template
+from command_utils import get_task_by_worker, remove_task_by_id, create_task
+from constants import (RATION_PACKS, MAJOR_RESOURCES_ORDER, CHAIN_RESOURCES_ORDER, GATING_RULES, NORMAL_ITEM_RARITY, 
+                       GATE_ITEM_RARITY, POST_CRITICAL_ITEM_RARITY, IDLE_CHARGE_USAGE, FULL_DROID_CHARGE, INITIAL_CHARGE, 
+                       INITIAL_SEED_STASH, SEED_PACKETS_USED, NUM_DROIDS, LOW_CHARGE_FLAG, TASK_CHARGING, TASK_PLANTING, 
+                       TaskStartOutcome, CHARGE_DURATION)
+from items import REPLACEMENT, JUNK, ITEM_DB, get_item_template
 from lore.lore_ingame import get_message
 from lore.user_interface import msg_power
-from planting import initialise_hydroponics_room
 from utils import set_shield_state
+
 
 def get_resource(resources, name):
     for res in resources:
@@ -108,6 +107,8 @@ def _pick_unfound_item(candidates):
 
 
 def react_to_found_resource(resource_name, resources, droids, gamestate, shieldstate):
+    from planting import initialise_hydroponics_room
+    
     for res in resources:
         if res["name"] == resource_name:
             res["found"] = True
@@ -324,22 +325,8 @@ def attempt_exploration(task_package, allow_chain_early=True):
         task_package["counters"]["found_nil"] = found_nothing_count
         return replacement_name, task_package
 
-    # 7b) Novelty / Junk
-    novelty_chance = rarity.get("novelty", 0.0)
-    novelty_item = _pick_unfound_item(NOVELTY)
-
-    # At gates (3/6/9) we guarantee *something* non-critical:
-    #  - Try novelty first with elevated chance
-    #  - If that fails (or none left), fall through to junk.
+    # At gates (3/6/9) we guarantee a junk item
     if is_gate_streak:
-        if novelty_item and random.random() < novelty_chance:
-            novelty_item["found"] = True
-            novelty_item_name = novelty_item["name"]
-            found_nothing_count = 0
-            task_package["counters"]["found_nil"] = found_nothing_count
-            return novelty_item_name, task_package
-
-        # If we didn't get novelty, give junk (if any) as a consolation prize.
         junk_item = _pick_unfound_item(JUNK)
         if junk_item:
             junk_item["found"] = True
@@ -350,14 +337,6 @@ def attempt_exploration(task_package, allow_chain_early=True):
 
         # If no junk left either, just fall through to "no find".
         return None, task_package
-
-    # Non-gate normal exploration:
-    if novelty_item and random.random() < novelty_chance:
-        novelty_item["found"] = True
-        novelty_item_name = novelty_item["name"]
-        found_nothing_count = 0
-        task_package["counters"]["found_nil"] = found_nothing_count
-        return novelty_item_name, task_package
 
     # Small chance to get junk even on non-gate runs to keep things spicy
     junk_item = _pick_unfound_item(JUNK)
@@ -380,7 +359,7 @@ def charge_droid(droid_name, droids, resources, turns_elapsed):
         user_message = get_message("charge", "nowhere_to_charge", droid_name=droid_name)
         return user_message, droids, resources
 
-    if power_resource["amount"] < FULL_CHARGE:
+    if power_resource["amount"] < FULL_DROID_CHARGE:
         user_message = get_message("charge", "not_enough_power", droid_name=droid_name)
         return user_message, droids, resources
     
@@ -389,20 +368,20 @@ def charge_droid(droid_name, droids, resources, turns_elapsed):
     current_charge = droids[droid_name]["charge"]
 
     # Prevent overcharging above 80%
-    if current_charge >= 0.8*FULL_CHARGE:
+    if current_charge >= 0.8*FULL_DROID_CHARGE:
         user_message = get_message("charge", "charge_full", droid_name=droid_name)
         return user_message, droids, resources
 
-    if current_charge >= FULL_CHARGE:
+    if current_charge >= FULL_DROID_CHARGE:
         user_message = get_message("charge", "already_full", droid_name=droid_name)
         return user_message, droids, resources
 
     # Calculate actual amount to charge
-    charge_amount = min((FULL_CHARGE+IDLE_CHARGE_USAGE) - current_charge, FULL_CHARGE+IDLE_CHARGE_USAGE)
+    charge_amount = min((FULL_DROID_CHARGE+IDLE_CHARGE_USAGE) - current_charge, FULL_DROID_CHARGE+IDLE_CHARGE_USAGE)
     droids[droid_name]["charge"] += charge_amount
     power_resource["amount"] -= charge_amount-IDLE_CHARGE_USAGE
 
-    user_message = get_message("charge", "success", droid_name=droid_name, new_charge=FULL_CHARGE)
+    user_message = get_message("charge", "success", droid_name=droid_name, new_charge=FULL_DROID_CHARGE)
 
     # Warn if the power goes below a full charge for all the droids
     power_after_charge = power_resource["amount"]
@@ -410,6 +389,29 @@ def charge_droid(droid_name, droids, resources, turns_elapsed):
         msg_power(get_message("charge", "low_power_warning"), turns_elapsed, tone="warn")
         
     return user_message, droids, resources
+
+
+def charge_droids_waiting_for_power(task_package):
+    droids = task_package["droids"]
+    humans = task_package["humans"]
+    from queuing import is_idle
+
+    for name, droid in droids.items():
+        if not droid.get("awaiting_power", False):
+            continue
+
+        if droid.get("power_wait_declined", False):
+            continue
+
+        if not is_idle(name, humans, droids):
+            continue
+
+        outcome, return_msg, task_package = try_start_charge_task(name, task_package)
+
+        if outcome == TaskStartOutcome.STARTED:
+            msg_power(return_msg, task_package["counters"]["turns"], stamp=False)
+
+    return task_package
 
 
 def decrease_droid_charge(task_package):
@@ -422,50 +424,111 @@ def decrease_droid_charge(task_package):
     for i in range(NUM_DROIDS):
         droid_name = list(droids.keys())[i]
         droid_stats = droids[droid_name]
-        if droid_stats["charge"] > 0 and droid_stats["item"] != "CloakingShield":
+        if droid_stats["charge"] > 0 and droid_stats["item"] != "CloakingShield" and droid_stats["task"] != TASK_CHARGING:
             droid_stats["charge"] = max(0, droid_stats["charge"] - IDLE_CHARGE_USAGE)
 
         # Warn if the charge drops below a certain level, but only warn once or twice at most (future proof for power usage)
-        if (LOW_CHARGE_FLAG - 1) * IDLE_CHARGE_USAGE < droid_stats["charge"] <= LOW_CHARGE_FLAG * IDLE_CHARGE_USAGE:
-            msg_power(get_message("charge", "getting_low", name=droid_name), turns_elapsed)
+        if droid_stats["task"] != TASK_CHARGING:
+            if (LOW_CHARGE_FLAG - 1) * IDLE_CHARGE_USAGE < droid_stats["charge"] <= LOW_CHARGE_FLAG * IDLE_CHARGE_USAGE:
+                msg_power(get_message("charge", "getting_low", name=droid_name), turns_elapsed)
 
         if droid_stats["charge"] <= 0:
-            tasks, droids, humans, resources = interrupt_task_if_no_power(droid_name, task_package)
+            task_package = interrupt_task_if_no_power(droid_name, task_package)
 
     return task_package
 
 
+def get_power_supply(resources):
+    return next(
+        (resource for resource in resources if resource.get("name") == "PowerSupply"),
+        None
+    )
+
+
+def get_power_required_for_full_charge(droid):
+    return max(0, FULL_DROID_CHARGE - droid["charge"])
+
+
+def try_start_charge_task(name, task_package):
+    droids = task_package["droids"]
+    resources = task_package["resources"]
+
+    droid = droids[name]
+    power_resource = get_power_supply(resources)
+
+    if not power_resource or not power_resource.get("found", False):
+        return TaskStartOutcome.INVALID, "", task_package
+
+    power_required = get_power_required_for_full_charge(droid)
+
+    if power_required == 0:
+        return TaskStartOutcome.INVALID, "", task_package
+
+    available_power = power_resource["amount"]
+
+    if available_power < power_required:
+        droid["awaiting_power"] = True
+
+        return_msg = get_message("charge", "not_enough_power_for_charge", name=name, task=TASK_CHARGING, remaining_power=available_power, needed_power=power_required)
+        
+        return TaskStartOutcome.INVALID, return_msg, task_package
+
+    task_data = {
+        "reserved_power": power_required,
+        "starting_charge": droid["charge"],
+        "target_charge": FULL_DROID_CHARGE
+    }
+
+    # Reserve immediately.
+    power_resource["amount"] -= power_required
+
+    return_msg, task_package = create_task(name, TASK_CHARGING, CHARGE_DURATION, task_package, task_data=task_data)
+
+    droid["awaiting_power"] = False
+    droid["power_wait_declined"] = False
+
+    return TaskStartOutcome.STARTED, return_msg, task_package
+
+
 def interrupt_task_if_no_power(name, task_package):
-    droids =  task_package["droids"]
-    humans =  task_package["humans"]
-    resources =  task_package["resources"]
+    droids = task_package["droids"]
+    resources = task_package["resources"]
     tasks = task_package["tasks"]
     turns_elapsed = task_package["counters"]["turns"]
+
     droid = droids[name]
 
     if droid["charge"] > 0:
-        return tasks, droids, humans, resources
+        return task_package
 
     task_id, task = get_task_by_worker(tasks, name)
+
+    # A zero-charge idle droid is assumed to be close enough to charge normally.
     if not task:
-        return tasks, droids, humans, resources
+        return task_package
+
+    # Never interrupt an active charging task.
+    if task["type"] == TASK_CHARGING:
+        return task_package
+
+    # This droid ran flat while away performing an active task.
+    droid["needs_tow"] = True
 
     task_type = task["type"].lower()
 
-    if task["type"] != TASK_CHARGING: # Only interrupt a task if the task is not charging
-        msg_power(get_message("charge", "task_interrupt", name=name, task_type=task_type), turns_elapsed)
-        if task["type"] == TASK_ASSIGNED or task["type"] == TASK_EXAMINING:
-            item_name = task.get("item_name", "")
-        elif task["type"] == TASK_PLANTING:
-            hydro = next((r for r in resources if r["name"] == "HydroponicsRoom"), None)
-            # Free the beds
-            for b in hydro["beds"]:
-                if b["reserved_by"] == name:
-                    b["occupied"] = False
-                    b["crop_id"] = None
-                    b["name"] = ""
-                    b["reserved_by"] = ""
+    msg_power(get_message("charge", "task_interrupt", name=name, task_type=task_type), turns_elapsed)
 
-        remove_task_by_id(task_id, task_package)
+    if task["type"] == TASK_PLANTING:
+        hydro = next((r for r in resources if r["name"] == "HydroponicsRoom"), None)
 
-    return tasks, droids, humans, resources
+        if hydro:
+            for bed in hydro["beds"]:
+                if bed["reserved_by"] == name:
+                    bed["occupied"] = False
+                    bed["crop_id"] = None
+                    bed["name"] = ""
+                    bed["reserved_by"] = ""
+
+    remove_task_by_id(task_id, task_package)
+
+    return task_package

@@ -75,10 +75,14 @@ def mgc_is_here_check_the_shield(task_package):
     return True, msg, task_package
 
 
-def handle_game_over_loop(task_package):
+def handle_game_over_loop(task_package, end_msg=""):
     # Handles user input after game over.
     # Returns updated task_package or exits.
-    turns_elapsed = task_package["counters"]["turns"]
+    if task_package:
+        turns_elapsed = task_package["counters"]["turns"]
+
+    if end_msg:
+        msg_story(end_msg, turns_elapsed)
 
     while True:
         reason_code = task_package["gamestate"].get("endgame_reason")
@@ -93,7 +97,7 @@ def handle_game_over_loop(task_package):
         answer = get_input("input", "endgame_choice", task_package["counters"]["turns"])
 
         if answer and answer == ui_runtime.GUI_PENDING:
-            return None
+            return False, task_package  # Awaiting GUI input
 
 
 def resume_game_over_loop(answer, context):

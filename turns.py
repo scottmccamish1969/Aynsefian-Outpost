@@ -1,22 +1,24 @@
 # turns.py
 
+from os import name
 import random
 from datetime import datetime
 
 from actions import handle_immediate_or_queued_task, start_next_queued_task_for_character
-from commands import handle_reset_command
+from commands import handle_reset_command, clear_task_for_character
 from command_utils import handle_read_command,  get_task_by_worker, remove_task_by_id
 from constants import TASK_ASSIGNED, TASK_EXAMINING, TASK_CHARGING, TASK_EATING, ALL_TASKS
 from endgame import check_endgame, handle_game_over_loop
 from lore.lore_ingame import get_message, handle_help_command
 from lore.lore_story import get_story_message
 import lore.user_interface as ui_runtime
-from lore.user_interface import msg_warn, msg_story, msg_error, msg_info, get_input
-from planting import update_crop_growth
+from lore.user_interface import msg_warn, msg_story, msg_error, msg_info, msg_food, get_input
+from planting import update_crop_growth, return_reserved_meal
 from resources import decrease_droid_charge
 from status import handle_list_command
 from tasks import advance_tasks
-from utils import is_command_enabled, load_config, process_hunger_status, check_shield_state, save_config, update_screen, get_best_match
+from utils import (can_character_act, character_not_interruptible, is_command_enabled, load_config, process_hunger_status, check_shield_state, 
+                   save_config, update_screen, get_best_match)
 
 
 def process_turn(command, task_package):
@@ -215,7 +217,7 @@ def complete_turn(task_package):
     game_over, end_msg, task_package = check_endgame(task_package)
 
     if game_over:
-        task_package = handle_game_over_loop(end_msg)
+        awaiting_input, task_package = handle_game_over_loop(task_package, end_msg)
 
     # Save and update always
     task_package["gamestate"]["turn_suspended"] = False
@@ -326,9 +328,9 @@ def complete_replace_command(answer, context):
     task_id, task = get_task_by_worker(tasks, character)
     current_task = task["type"]
 
-    # If the character is eating or charging, they can't use 'replace'
-    if current_task in (TASK_EATING, TASK_CHARGING):
-        msg_warn(get_message("replace", "cannot_interrupt", name=character, task=answer), turns_elapsed)
+    # If the character is eating, charging or towing a droid they can't use 'replace'
+    if character_not_interruptible(character, current_task, task_package):
+        msg_warn(get_message("replace", "cannot_interrupt", name=character, new_task=answer, task=current_task), turns_elapsed)
 
         # Put the new task at the top of the queue and delete the third queued task
         if character in humans:
@@ -344,6 +346,8 @@ def complete_replace_command(answer, context):
         queue["3"] = queue["2"].copy()
         queue["2"] = queue["1"].copy()
         queue["1"] = {"task": "", "item": ""}
+
+        return task_package
     
     # It's a valid task, go ahead with it
     if new_task in ALL_TASKS:
@@ -376,9 +380,7 @@ def handle_cancel_command(qualifier, task_package):
     turns_elapsed = task_package["counters"]["turns"]
 
     if qualifier:
-        context = {
-            "task_package": task_package,
-        }
+        context = {"task_package": task_package,}
         return resume_cancel_command(qualifier.lower(), context)
 
     if ui_runtime.UI_MODE == "gui" and ui_runtime.ACTIVE_UI is not None:
@@ -404,40 +406,56 @@ def resume_cancel_command(answer, context):
     droids = task_package["droids"]
     tasks = task_package["tasks"]
     turns_elapsed = task_package["counters"]["turns"]
+    awaiting_input = False
+    task_now_doing = ""
 
     character = get_best_match(answer, list(humans.keys()) + list(droids.keys()))
     if not character:
         msg_error(get_message("error", "no_character", name=answer), turns_elapsed)
-        return False, task_package
+        return awaiting_input, task_package
 
-    task_id, task = get_task_by_worker(tasks, character)
-
+    # Get queue and task information    
     if character in humans:
         queue = humans[character]["queue"]
+        task_now_doing = humans[character].get("task", "")
     elif character in droids:
         queue = droids[character]["queue"]
+        task_now_doing = droids[character].get("task", "")
     else:
         msg_error(get_message("error", "character_not_found", name=character), turns_elapsed)
-        return False, task_package
+        return awaiting_input, task_package
+    
+    task_id, task = get_task_by_worker(tasks, character)
+    if not task and not task_now_doing:
+        msg_error(get_message("cancel", "nothing_to_cancel", name=character), turns_elapsed)
+        return awaiting_input, task_package
 
-    has_current_task = task is not None
+    if task:
+        if character_not_interruptible(character, task["type"], task_package):
+            return awaiting_input, task_package
+
+    has_current_task = task is not None or task_now_doing != ""
     queued_slots = [slot for slot in ("1", "2", "3") if queue[slot]["task"] != ""]
     has_queue = len(queued_slots) > 0
 
     if not has_current_task and not has_queue:
         msg_error(get_message("cancel", "nothing_to_cancel", name=character), turns_elapsed)
-        return False, task_package
+        return awaiting_input, task_package
 
     current_task_desc = "--Idle--"
     current_task_type = ""
 
-    if has_current_task:
+    if task:
         current_task_type = task["type"]
         if current_task_type in (TASK_EXAMINING, TASK_ASSIGNED):
             item_name = task.get("item_name", "")
             current_task_desc = f"{current_task_type} {item_name} ({task['duration']} turns remaining)"
         else:
             current_task_desc = f"{current_task_type} ({task['duration']} turns remaining)"
+    # If the character has no task, but is assigned or is showing a task, we can clear it and return to idle
+    elif task_now_doing:
+        humans, droids = clear_task_for_character(name, "", humans, droids)
+        return awaiting_input, task_package
 
     queue_desc = []
     for slot in queued_slots:
@@ -468,7 +486,8 @@ def resume_cancel_command(answer, context):
         answer = get_input("cancel", "which_queued", turns_elapsed, name=character, queue_list=queue_string)
 
         if answer and answer == ui_runtime.GUI_PENDING:
-            return None
+            awaiting_input = True
+            return awaiting_input, task_package
 
         task_package = complete_cancel_command(answer, {
             "task_package": task_package,
@@ -478,7 +497,7 @@ def resume_cancel_command(answer, context):
             "queued_slots": queued_slots,
             "mode": "queue_only",
         })
-        return False, task_package
+        return awaiting_input, task_package
 
     # Otherwise ask whether to cancel current or queued
     if ui_runtime.UI_MODE == "gui" and ui_runtime.ACTIVE_UI is not None:
@@ -497,7 +516,8 @@ def resume_cancel_command(answer, context):
     answer = get_input("cancel", "current_or_queue", turns_elapsed, name=character, current_task=current_task_desc, queue_list=queue_string)
 
     if answer and answer  == ui_runtime.GUI_PENDING:
-        return None
+        awaiting_input = True
+        return awaiting_input, task_package
 
     task_package = complete_cancel_command(answer, {
         "task_package": task_package,
@@ -559,10 +579,14 @@ def complete_cancel_command(answer, context):
                 msg_info(get_message("cancel", "no_queued_tasks", name=character), turns_elapsed)
                 return task_package
 
-            awaiting_input, task_package = start_next_queued_task_for_character(character, task_package)
+            # Check if they're okay to act before letting them act
+            task_type = ""
+            okay_to_act, task_package = can_character_act(name, "task", task_package)
+            if okay_to_act:
+                awaiting_input, task_package = start_next_queued_task_for_character(character, task_package)
 
-            if awaiting_input:
-                return None
+                if awaiting_input:
+                    return None
 
             return task_package
 
@@ -605,6 +629,7 @@ def complete_cancel_command(answer, context):
 
     # Stage 2: remove queued task
     if mode == "queue_only":
+        return_food = False
         slot = answer.strip()
 
         if slot == "0":
@@ -615,7 +640,18 @@ def complete_cancel_command(answer, context):
             msg_error(get_message("cancel", "invalid_queue_slot", slot=slot, name=character), turns_elapsed)
             return task_package
 
-        removed_task = queue[slot]["task"]
+        # Capture everything before shifting the queue.
+        removed_record = queue[slot].copy()
+        removed_task = removed_record.get("task", "")
+        task_data = removed_record.get("task_data", {})
+
+        # Return reserved food only for a queued Eating task.
+        if removed_task == TASK_EATING:
+            if task_data:
+                task_package = return_reserved_meal(task_data, task_package)
+                msg_food(get_message("feed", "food_returned", name=character), turns_elapsed, tone="warn")
+            else:
+                msg_food(get_message("feed", "food_not_returned", name=character), turns_elapsed, tone="warn")
 
         # Shift left after removal
         if slot == "1":

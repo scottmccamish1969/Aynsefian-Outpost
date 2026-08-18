@@ -1,5 +1,12 @@
 #constants.py
 
+from enum import Enum, auto
+
+class TaskStartOutcome(Enum):
+    INVALID = auto()
+    STARTED = auto()
+    AWAITING_INPUT = auto()
+    
 # File names
 CONFIG_FILE = "outpost_config.json"
 LOG_FILE = "outpost_log.txt"
@@ -15,7 +22,7 @@ NUM_HUMANS = 4
 NUM_DROIDS = 4
 
 # Names and genders for humans and droids
-NAMES = ["Carrie", "Hariet", "Karla", "Niobe", "Alex", "Mike", "Terry", "Rin"]
+NAMES = ["Carrie", "Hariet", "Karla", "Niobe", "Alex", "Mike", "Terry", "Fen"]
 NO_GENDER = 0
 FEMALE = 1
 MALE = 2
@@ -27,7 +34,7 @@ GENDERS = {
     "Alex" : MALE,
     "Mike" : MALE,
     "Terry": MALE,
-    "Rin" : MALE
+    "Fen" : MALE
 }
 
 # Human hunger triggers
@@ -35,24 +42,26 @@ HUNGER = {
     "Okay": (0, 6),
     "Hungry": (7, 9),
     "Starving": (16, 18),
-    "Near Death": (25, 27),
+    "NearDeath": (25, 27),
     "Deceased": (30, 33)
 }
 
 # Warning flags for hunger or power
 HUNGER_WARNING = {
     "Starving": 14,
-    "Near Death": 23,
+    "NearDeath": 23,
     "Deceased": 28   
 }
 ONE_DAY_HUNGRY = 10
+NORMAL_MEAL_MULTIPLIER = 1.0
+EMERGENCY_MEAL_MULTIPLIER = 1.5
 
 # Charging constants
 INITIAL_CHARGE = 15000      # Enough for 15 droid charges (7.5 days for all charged, then 3 droids, then nothing - MUST then be mining crystals)
-FULL_CHARGE = 1000          # The most a droid can be charged to
+FULL_DROID_CHARGE = 1000    # The most a droid can be charged to
 IDLE_CHARGE_USAGE = 50      # 50/turn leads to 500/day, leading to 2 days per full charge
 LOW_CHARGE_FLAG = 6         # This is measured in turns (i.e. 6 turns before running out of charge - they get a warning message)
-TOW_TASK_LENGTH = 1         # How long it takes to take a droid to the power supply
+TOW_TASK_LENGTH = 2         # How long it takes to take a droid to the power supply
 
 # Task names
 TASK_ASSIGNED  = "Assigned"
@@ -124,6 +133,7 @@ COMMAND_MAP = {
 # Task timings (ranged)
 TASK_LENGTH = {
     "feed_human": (2, 2),
+    "feed_human_emergency": (3, 3),
     "explore_human": (3, 5),
     "examine_human": (1, 2), # This MUST be added to the item examine time
     "reap_human": (4, 6),
@@ -187,14 +197,14 @@ SEED_PACKETS_USED = {
     "cabbage": 10,
     "potato": 20
 }
-INITIAL_SEED_STASH = 400
-REAP_SEED_FRACTION = 0.75
+INITIAL_SEED_STASH = 280
+REAP_SEED_FRACTION = 0.5
 
 # Crop Yield Range
 YIELD_RANGE = {
-    "apple": (50, 80),
-    "cabbage": (8, 11),
-    "potato": (28, 48)
+    "apple": (25, 40),
+    "cabbage": (4, 7),
+    "potato": (12, 21)
 }
 
 # Serving values (food units needed to feed one person)

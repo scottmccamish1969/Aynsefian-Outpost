@@ -5,15 +5,15 @@ import os
 import random
 import difflib
 
-from command_utils import clear_task_for_character, get_pronouns, get_task_by_worker, remove_task_by_id
-from constants import (NAMES, INITIAL_GAMESTATE, CONFIG_FILE, LOG_FILE, LOG_FILE_OLD, FEMALE, MALE, GENDERS, HUNGER, LOW_CHARGE_FLAG, IDLE_CHARGE_USAGE,
-    NUM_HUMANS, NUM_DROIDS, HUNGER_WARNING, TASK_ASSIGNED, TASK_PLANTING, TASK_EATING, TASK_EXPLORING, TASK_MINING, TASK_CHARGING, COMMAND_MAP)
+from command_utils import get_pronouns, get_task_by_worker, remove_task_by_id
+from constants import (NAMES, INITIAL_GAMESTATE, CONFIG_FILE, LOG_FILE, LOG_FILE_OLD, HUNGER, NUM_HUMANS, NUM_DROIDS, HUNGER_WARNING, 
+    TASK_ASSIGNED, TASK_PLANTING, TASK_EATING, TASK_REAPING, TASK_CHARGING, TASK_TOWING_DROID, FOOD_PER_DAY, FULL_DROID_CHARGE)
 from lore.lore_ingame import get_message
 from lore.lore_story import print_orders
 import lore.user_interface as ui_runtime
-from lore.user_interface import get_input, msg_resource, msg_food, msg_error, msg_info, msg_power, log_and_display
+from lore.user_interface import msg_resource, msg_food, msg_error, msg_info, msg_power, msg_warn
 from OutpostUI import get_top_bar_data
-from status import display_character_summary, get_state_panel_text
+from status import get_state_panel_text
 
 
 def update_screen(task_package):
@@ -84,6 +84,8 @@ def initialise_outpost(first_time):
             "generated": False,
             "item": "",
             "examine_needed": "",
+            "awaiting_food": False,
+            "food_wait_declined": False,
             "queue": empty_queue.copy()
         } for i in range(NUM_HUMANS)
     }
@@ -97,6 +99,11 @@ def initialise_outpost(first_time):
             "item": "",
             "examine_needed": "",
             "first_charge": True,
+            "needs_tow": False,
+            "tow_declined": False,
+            "awaiting_power": False,
+            "power_wait_declined": False,
+            "power_wait_since": 0,
             "queue": empty_queue.copy()
         } for i in range(NUM_DROIDS)
     }
@@ -229,7 +236,7 @@ def process_hunger_status(name, task_package, warn=True):
                     correct_state = "Hungry"
                     if hunger_value < hungry_low:
                         correct_state = "Okay"
-            elif band == "Near Death" and current_state == "Near Death":
+            elif band == "NearDeath" and current_state == "NearDeath":
                 near_death_low = low
                 if hunger_value < near_death_low:
                     correct_state = "Starving"
@@ -273,7 +280,8 @@ def process_hunger_status(name, task_package, warn=True):
             if hunger == warning_turn and current_state != warning_state:
                 pronouns = get_pronouns(name, True)
                 if warn:
-                    msg_food(get_message("hunger", f"{warning_state.lower()}_warning", pronoun=pronouns["p1"], name=name),
+                    msg_food(get_message("hunger", f"{warning_state.lower()}_warning", 
+                            pronoun1=pronouns["p1"].lower(), pronoun2=pronouns["p2"].lower(), pronoun3=pronouns["p3"].lower(), name=name),
                             turns_elapsed, tone="warn")
 
     # --- NO CHANGE ---
@@ -288,7 +296,8 @@ def process_hunger_status(name, task_package, warn=True):
         if new_band != "Okay":
             pronouns = get_pronouns(name, True)
             if warn:
-                msg_food(get_message("hunger", new_band, pronoun=pronouns["p2"].lower(), name=name), 
+                msg_food(get_message("hunger", new_band,
+                        pronoun1=pronouns["p1"].lower(), pronoun2=pronouns["p2"].lower(), pronoun3=pronouns["p3"].lower(), name=name),
                         turns_elapsed, tone="warn")
         return task_package
 
@@ -298,10 +307,14 @@ def process_hunger_status(name, task_package, warn=True):
             human["state"] = new_band
             pronouns = get_pronouns(name, True)
             if warn:
-                msg_food(get_message("hunger", new_band, pronoun=pronouns["p2"].lower(), name=name), turns_elapsed, tone="warn")
+                msg_food(get_message("hunger", new_band,
+                        pronoun1=pronouns["p1"].lower(), pronoun2=pronouns["p2"].lower(), pronoun3=pronouns["p3"].lower(), name=name),
+                        turns_elapsed, tone="warn")
 
             if new_band == "Starving":
-                task_package = interrupt_task_if_starving(name, human, task_package)
+                task_now_doing = human["task"]
+                if task_now_doing not in (TASK_EATING, TASK_REAPING):
+                    task_package = interrupt_task_if_starving(name, human, task_package)
 
     return task_package
 
@@ -309,99 +322,167 @@ def process_hunger_status(name, task_package, warn=True):
 def interrupt_task_if_starving(name, human, task_package):
     tasks = task_package["tasks"]
     resources = task_package["resources"]
-    humans = task_package["humans"]
-    droids = task_package["droids"]
     turns_elapsed = task_package["counters"]["turns"]
 
     if human["state"] != "Starving":
-        return task_package  # nothing to do
-
-    task_id, task = get_task_by_worker(tasks, name)
-    if not task:
-        return task_package  # idle anyway
-    
-    task_type = task["type"].lower()
-
-    # If they are eating, all good
-    if task_type == TASK_EATING.lower():
         return task_package
 
-    msg_food(f"{name} cannot continue {task_type}. Hunger overwhelms focus and strength. The task has been abandoned.", 
-             turns_elapsed, tone="warn")
+    task_id, task = get_task_by_worker(tasks, name)
 
-    if task_type == TASK_PLANTING.lower():
-        hydro = next((r for r in resources if r["name"] == "HydroponicsRoom"), None)
-            # Free the bed
-        bed = {}
-        for b in hydro["beds"]:
-            if b["reserved_by"] == name:
-                b["occupied"] = False
-                b["crop_id"] = None
-                b["name"] = ""
-                b["reserved_by"] = ""
+    if task:
+        task_type = task["type"].lower()
 
-    remove_task_by_id(task_id, task_package)    # Remove the old task and clear the character's status
+        # If they are already eating, everything is fine.
+        if task_type == TASK_EATING.lower():
+            return task_package
+
+        msg_food(get_message("error", "starving", name=name, task_type=task_type), turns_elapsed, tone="warn")
+
+        if task_type == TASK_PLANTING.lower():
+            hydro = next((r for r in resources if r["name"] == "HydroponicsRoom"), None)
+
+            if hydro:
+                for bed in hydro["beds"]:
+                    if bed.get("reserved_by", "").casefold() == name.casefold():
+                        bed["occupied"] = False
+                        bed["reserved"] = False
+                        bed["crop_id"] = None
+                        bed["reserved_by"] = ""
+
+        remove_task_by_id(task_id, task_package)
+
+    # Whether they were just interrupted or were already idle,
+    # a starving human should immediately attempt to eat.
+    from queuing import do_auto_feed
+    return_msg, task_package = do_auto_feed(name, task_package)
+
+    if return_msg:
+        msg_food(return_msg, turns_elapsed, stamp=False)
 
     return task_package
 
 
-def can_character_act(character, task_name, humans, droids, turns_elapsed):
+
+def can_character_act(character, task_name, task_package, examine_after_explore=False):
     # Generic checks to see if we can use this character (human or droid)
+    humans = task_package["humans"]
+    droids = task_package["droids"]
+    resources = task_package["resources"]
+    turns_elapsed = task_package["counters"]["turns"]
 
     target = get_best_match(character, list(humans.keys()) + list(droids.keys()))
+    can_act = False
+
     if not target:
-        msg_error(get_message("error", "unknown_worker", name=character, task=task_name), turns_elapsed)
-        return False, False, target
+        msg_error(get_message("error", "unknown_worker", name=character), turns_elapsed)
+        return can_act, task_package
 
     is_human = target in humans
+    pronouns = get_pronouns(target, is_human)
 
-    # ---- Pre-condition checks ----
-    if is_human and humans[target]["state"] in ["Starving", "Near Death", "Deceased"]:
-        pronouns = get_pronouns(target, True)
-        if task_name == TASK_ASSIGNED:
-            msg_food(
-                get_message("error", "too_hungry_for_assign", name=target, task=task_name.lower(), pronoun=pronouns["p1"]),
-                turns_elapsed, tone="error")
-        else:
-            msg_food(
-                get_message("error", "too_hungry", name=target, task=task_name.lower(), pronoun=pronouns["p1"]),
-                turns_elapsed, tone="error")
-        return False, is_human, target
+    # A human who has chosen to wait for food cannot begin or queue
+    # ordinary work. Feeding remains allowed so they can leave this state.
+    if (is_human and humans[target].get("awaiting_food", False)): 
+        if task_name not in (TASK_EATING, TASK_REAPING):
+            msg_food(get_message("feed", "waiting_for_food", name=target), turns_elapsed, tone="warn")
+            return can_act, task_package
 
+    # ---- Pre-condition checks ----    
+    if is_human and humans[target]["state"] == "Deceased":
+        msg_food(get_message("error", "deceased_cannot_act", name=target), turns_elapsed, tone="error")
+        return False, task_package
+
+    if is_human and humans[target]["state"] in ("Starving", "NearDeath"):
+        if task_name not in (TASK_EATING, TASK_REAPING):
+            if task_name == TASK_ASSIGNED:
+                msg_food(get_message("error", "too_hungry_for_assign", name=target, task=task_name.lower(), pronoun=pronouns["p1"].lower()), turns_elapsed, tone="error")
+            elif task_name != "":
+                msg_food(get_message("error", "too_hungry", name=target, task=task_name.lower(), pronoun=pronouns["p1"].lower()), turns_elapsed, tone="error")
+            else:
+                msg_error(get_message("error", "unknown_task"), turns_elapsed, tone="error")
+            # If task name is null, this is likely to be a 
+
+            return False, task_package
+
+    # Eating and Reaping are permitted, but continue below so the
+    # ordinary idle and queue-capacity checks still apply.
     if not is_human:
+        power_supply = next((r for r in resources if r.get("name") == "PowerSupply"), None)
+        if not power_supply:
+            msg_power(get_message("charge", "nowhere_to_charge", droid_name=target), turns_elapsed)
+            return can_act, task_package
+        remaining_power = power_supply.get("amount", 0)
+
         charge = droids[target]["charge"]
         current_task = droids[target]["task"]
-        
-        # Droids with 0 charge can only continue if they are currently charging
-        if charge <= 0 and current_task != TASK_CHARGING:
-            if task_name == TASK_ASSIGNED:
-                msg_power(get_message("error", "no_power_for_assign", name=target, task=task_name.lower()), turns_elapsed, tone="error")
-            else:
-                msg_power(get_message("error", "no_power", name=target, task=task_name.lower()), turns_elapsed, tone="error")
-            return False, is_human, target
 
-    # If the character is idle (even if their queue is full) - they can act (maybe 'manage' was used to delete their current task)
+        # Droids with 0 charge can only continue if currently charging.
+        if (charge <= 0 and current_task != TASK_CHARGING and task_name != TASK_CHARGING):  
+            if remaining_power > FULL_DROID_CHARGE:
+                if task_name == TASK_ASSIGNED:
+                    msg_power(get_message("error", "no_power_for_assign", name=target, task=task_name.lower()), turns_elapsed, tone="error")
+                else:
+                    msg_power(get_message("error", "no_power", name=target, task=task_name.lower(), pronoun=pronouns["p1"].lower()), turns_elapsed, tone="error")
+            else:
+                msg_power(get_message("error", "not_enough_power_for_charge", name=target, task=task_name.lower(), remaining_power=remaining_power, needed_power=FULL_DROID_CHARGE), turns_elapsed, tone="error")
+                
+            return can_act, task_package
+
+    # If this is an examine that has occurred after an explore, allow them to do it
+    if examine_after_explore:
+        can_act = True
+        return can_act, task_package
+        
+    # Idle characters may begin a task immediately.
     if is_human:
         if humans[target]["task"] == "":
-            return True, is_human, target
+            can_act = True
+            return can_act, task_package
     else:
         if droids[target]["task"] == "":
-            return True, is_human, target
+            can_act = True
+            return can_act, task_package
 
-    # Check if their queue is full - can't act if that is the situation
-    if is_human:
-        queue = humans[target]["queue"]
-    else:
-        queue = droids[target]["queue"]
-    queue_full = True
-    for slot in ["1", "2", "3"]:
-        if queue[slot]["task"] == "":
-            queue_full = False
+    # Busy characters may queue work if space remains.
+    queue = (humans[target]["queue"] if is_human else droids[target]["queue"])
+    queue_full = all(queue[slot]["task"] != "" for slot in ("1", "2", "3"))
+
     if queue_full:
         msg_info(get_message("queue", "queue_full", character=target, task=task_name.lower()), turns_elapsed)
-        return False, is_human, target
+        return can_act, task_package
+    
+    # If we got this far, they're okay to act (either immediately or by queuing)
+    can_act = True
 
-    return True, is_human, target
+    return can_act, task_package
+
+
+def character_not_interruptible(name, current_task, task_package):
+    humans = task_package["humans"]
+    droids = task_package["droids"]
+    turns_elapsed = task_package["counters"]["turns"]
+    is_human = name in humans
+    pronouns = get_pronouns(name, is_human)
+    cannot_be_interrupted = False
+
+    # If this character is Deceased, they are not interruptible. I think we can safely say that.
+    if is_human and humans[name]["state"] == "Deceased":
+        msg_warn(get_message("error", "deceased", name=name, pronoun=pronouns["p1"].lower()), turns_elapsed, tone="warn")
+        return True
+
+    # Same if they are out of power and/or needing a tow. We can try to interrupt a powerless droid, but they are not going to respond.
+    if name in droids:
+        droid = droids[name]
+        if droid["charge"] <= 0 or droid.get("needs_tow", False):
+            msg_warn(get_message("error", "no_power", name=name, pronoun=pronouns["p1"].lower()), turns_elapsed, tone="warn")
+            return True
+
+    # Check if this character is not eating or being charged, and is not towing a droid.
+    cannot_be_interrupted = current_task in (TASK_EATING, TASK_CHARGING, TASK_TOWING_DROID)
+    if cannot_be_interrupted:
+        msg_warn(get_message("error", "uninterruptible", name=name, task=current_task.lower(), pronoun=pronouns["p1"].lower()), turns_elapsed, tone="warn")
+    
+    return cannot_be_interrupted
 
 
 def check_shield_state(task_package):
@@ -544,3 +625,34 @@ def clear_examine_needed_flag(name, task_package):
     elif name in droids:
         droids[name]["examine_needed"] = None
     return task_package
+
+
+def days_of_food_left(resources):
+    days_left = 0
+
+    ration = get_food_amount(resources, "rationPack")
+    apple = get_food_amount(resources, "apple")
+    cabbage = get_food_amount(resources, "cabbage")
+    potato = get_food_amount(resources, "potato")
+
+    days_left = (ration + apple/FOOD_PER_DAY["apple"] + cabbage/FOOD_PER_DAY["cabbage"] + potato/FOOD_PER_DAY["potato"])/NUM_HUMANS
+
+    return days_left
+
+
+def any_food_left(resources):
+    ration = get_food_amount(resources, "rationPack")
+    apple = get_food_amount(resources, "apple")
+    cabbage = get_food_amount(resources, "cabbage")
+    potato = get_food_amount(resources, "potato")
+
+    return (ration + apple + cabbage + potato) > 0
+
+
+def get_food_amount(resources, food_type):
+    # Returns the current quantity of a given food type from the FoodStore.
+    food_store = next((r for r in resources if r["name"] == "FoodStore"), None)
+    if not food_store:
+        return 0
+
+    return food_store.get(food_type, 0)

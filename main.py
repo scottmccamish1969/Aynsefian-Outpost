@@ -36,7 +36,7 @@ def main():
         game_over, end_msg, task_package = check_endgame(task_package)
 
         if game_over:
-            awaiting_input, task_package = handle_game_over_loop(end_msg)
+            awaiting_input, task_package = handle_game_over_loop(task_package, end_msg)
             if not awaiting_input:
                 if not task_package:
                     msg_warn(get_message("error", "no_config"), 0)

@@ -1,32 +1,38 @@
 # planting.py
 
 import random
+import math
 from command_utils import create_task, get_pronouns
-from constants import SERVING_VALUE, HYDROPONICS_BED_MIN, HYDROPONICS_BED_MAX, SEED_PACKETS_USED, TASK_PLANTING, FOOD_PER_DAY, NUM_HUMANS, TASK_LENGTH
+from constants import SERVING_VALUE, HYDROPONICS_BED_MIN, HYDROPONICS_BED_MAX, SEED_PACKETS_USED, TASK_PLANTING, ONE_DAY_HUNGRY, NUM_HUMANS, TASK_LENGTH
 from lore.lore_ingame import get_message
 import lore.user_interface as ui_runtime
 from lore.user_interface import get_input, msg_plant, msg_food
-from queuing import is_idle, add_to_queue
+from queuing import is_idle, add_to_queue, do_auto_feed
 from status import display_character_summary
-from utils import process_hunger_status, can_character_act
+from utils import process_hunger_status, can_character_act, days_of_food_left, any_food_left
 
 
-def feed_human(name, task_package):
+def select_and_reserve_meal(name, multiplier, hunger_reduction, task_package):
     humans = task_package["humans"]
     resources = task_package["resources"]
     turns_elapsed = task_package["counters"]["turns"]
-    return_msg = ""
     food_store = next((r for r in resources if r["name"] == "FoodStore"), None)
-    is_human = name in humans
-    pronouns = get_pronouns(name, is_human)
+    task_data = {}
+    meal_type = "normal"
+    total_nutrition = ONE_DAY_HUNGRY*multiplier
 
-    # Check days of food left
-    how_much_food = days_of_food_left(resources)
+    # Set the nutrition target
+    nutrition_target = math.ceil(ONE_DAY_HUNGRY * multiplier)
+    total_nutrition = nutrition_target
+    meal_type = "emergency" if multiplier > 1 else "normal"
 
     # Open the food store
     if not food_store:
-        return_msg = get_message("feed", "no_foodstore")
-        return return_msg, task_package
+        msg_food(get_message("feed", "no_foodstore"), turns_elapsed, tone="error")
+        return {}, task_package
+    
+    # Check days of food left
+    how_much_food = days_of_food_left(resources)
 
     available = {
         "apple": food_store.get("apple", 0),
@@ -35,73 +41,131 @@ def feed_human(name, task_package):
         "rationPack": food_store.get("rationPack", 0)
     }
 
-    served = {"apple": 0, "potato": 0, "cabbage": 0}
+    served = {"rationPack": 0, "apple": 0, "potato": 0, "cabbage": 0}
 
     # Try full meal combos
-    if available["apple"] >= 4*SERVING_VALUE["apple"] and available["potato"] >= SERVING_VALUE["potato"] and available["cabbage"] >= SERVING_VALUE["cabbage"]:
-        served.update({"apple": 4*SERVING_VALUE["apple"], "potato": SERVING_VALUE["potato"], "cabbage": SERVING_VALUE["cabbage"]})
-    elif available["apple"] >= 4*SERVING_VALUE["apple"] and available["potato"] >= 2*SERVING_VALUE["potato"]:
-        served.update({"apple": 4*SERVING_VALUE["apple"], "potato": 2*SERVING_VALUE["potato"]})
-    elif available["apple"] >= 4*SERVING_VALUE["apple"] and available["cabbage"] >= 2*SERVING_VALUE["cabbage"]:
-        served.update({"apple": 4*SERVING_VALUE["apple"], "cabbage": 2*SERVING_VALUE["cabbage"]})
-    elif available["potato"] >= 2*SERVING_VALUE["potato"] and available["cabbage"] >= 2*SERVING_VALUE["cabbage"]:
-        served.update({"potato": 2*SERVING_VALUE["potato"], "cabbage": 2*SERVING_VALUE["cabbage"]})
-    elif available["apple"] >= 8*SERVING_VALUE["apple"]:
-        served.update({"apple": 8*SERVING_VALUE["apple"]})
-    elif available["potato"] >= 4*SERVING_VALUE["potato"]:
-        served.update({"potato": 4*SERVING_VALUE["potato"]})
-    elif available["cabbage"] >= 4*SERVING_VALUE["cabbage"]:
-        served.update({"cabbage": 4*SERVING_VALUE["cabbage"]})
-    elif available["rationPack"] >= 1:
-        food_store["rationPack"] -= 1
-        return_msg = get_message("feed", "fed_ration", person_name=name, pronoun1=pronouns["p1"], pronoun2=pronouns["p1"].lower())
-        humans[name]["hunger"] = max(0, humans[name]["hunger"] - 10)
-        task_package = process_hunger_status(name, task_package)
-        return return_msg, task_package
+    if (available["apple"] >= math.ceil(4*multiplier*SERVING_VALUE["apple"]) and 
+        available["potato"] >= math.ceil(multiplier*SERVING_VALUE["potato"]) and 
+        available["cabbage"] >= math.ceil(multiplier*SERVING_VALUE["cabbage"])):
+        served.update({"apple": math.ceil(4*multiplier*SERVING_VALUE["apple"]), 
+                       "potato": math.ceil(multiplier*SERVING_VALUE["potato"]), 
+                       "cabbage": math.ceil(multiplier*SERVING_VALUE["cabbage"])})
+    elif available["apple"] >= math.ceil(4*multiplier*SERVING_VALUE["apple"]) and available["potato"] >= math.ceil(2*multiplier*SERVING_VALUE["potato"]):
+        served.update({"apple": math.ceil(4*multiplier*SERVING_VALUE["apple"]), "potato": math.ceil(2*multiplier*SERVING_VALUE["potato"])})
+    elif available["apple"] >= math.ceil(4*multiplier*SERVING_VALUE["apple"]) and available["cabbage"] >= math.ceil(2*multiplier*SERVING_VALUE["cabbage"]):
+        served.update({"apple": math.ceil(4*multiplier*SERVING_VALUE["apple"]), "cabbage": math.ceil(2*multiplier*SERVING_VALUE["cabbage"])})
+    elif available["potato"] >= math.ceil(2*multiplier*SERVING_VALUE["potato"]) and available["cabbage"] >= math.ceil(2*multiplier*SERVING_VALUE["cabbage"]):
+        served.update({"potato": math.ceil(2*multiplier*SERVING_VALUE["potato"]), "cabbage": math.ceil(2*multiplier*SERVING_VALUE["cabbage"])})
+    elif available["apple"] >= math.ceil(8*multiplier*SERVING_VALUE["apple"]):
+        served.update({"apple": math.ceil(8*multiplier*SERVING_VALUE["apple"])})
+    elif available["potato"] >= math.ceil(4*multiplier*SERVING_VALUE["potato"]):
+        served.update({"potato": math.ceil(4*multiplier*SERVING_VALUE["potato"])})
+    elif available["cabbage"] >= math.ceil(4*multiplier*SERVING_VALUE["cabbage"]):
+        served.update({"cabbage": math.ceil(4*multiplier*SERVING_VALUE["cabbage"])})
+    # A complete meal can be supplied entirely from ration packs.
+    elif available["rationPack"] >= math.ceil(multiplier):
+        ration_packs_needed = math.ceil(multiplier)
+        served["rationPack"] = ration_packs_needed
 
-    # Fallback: partial feed with *any* food available
+        if available["rationPack"] == ration_packs_needed:
+            msg_food(get_message("feed", "last_ration", person_name=name), turns_elapsed, tone="warn")
+
+    # No recognised complete meal is available.
+    # Build the best possible meal from remaining produce and ration packs.
     else:
         total_nutrition = 0
-        for item in ["apple", "potato", "cabbage"]:
-            qty = available[item]
-            if qty > 0:
-                served[item] = qty
-                total_nutrition += qty
-                food_store[item] -= qty
+        nutrition_remaining = nutrition_target
+
+        # Use available fresh produce first.
+        for item in ("apple", "potato", "cabbage"):
+            if nutrition_remaining <= 0:
+                break
+
+            quantity_available = available[item]
+
+            if quantity_available <= 0:
+                continue
+
+            # Partial-meal logic currently treats one stored produce unit
+            # as one point of nutrition.
+            quantity_to_serve = min(quantity_available,nutrition_remaining)
+            served[item] = quantity_to_serve
+            total_nutrition += quantity_to_serve
+            nutrition_remaining -= quantity_to_serve
+
+        # If produce was insufficient, supplement it with ration packs.
+        if nutrition_remaining > 0 and available["rationPack"] > 0:
+            ration_packs_needed = math.ceil(nutrition_remaining / ONE_DAY_HUNGRY)
+            ration_packs_to_serve = min(available["rationPack"], ration_packs_needed)
+            served["rationPack"] = ration_packs_to_serve
+            total_nutrition += ration_packs_to_serve * ONE_DAY_HUNGRY
+
+            if ration_packs_to_serve == available["rationPack"]:
+                msg_food(get_message("feed", "last_ration", person_name=name), turns_elapsed, tone="warn")
 
         if total_nutrition == 0:
-            return_msg = get_message("feed", "food_all_used_up", person_name=name)
-            return return_msg, task_package
+            msg_food(get_message("feed", "food_all_used_up", person_name=name), turns_elapsed, tone="error")
+            return task_data, task_package
 
-        message = f"{name} received a partial meal: "
-        message += ", ".join([f"{v} {k} servings" for k, v in served.items() if v > 0])
-        return_msg = message
+        # A mixed meal may still reach the full nutrition target.
+        # It is only partial if the available food falls short.
+        if total_nutrition < nutrition_target:
+            meal_type = "partial"
 
-        # Reduce hunger based on total items given
-        hunger_reduction = min(total_nutrition, 10)
-        humans[name]["hunger"] = max(0, humans[name]["hunger"] - hunger_reduction)
-
-        task_package = process_hunger_status(name, task_package)
-        return return_msg, task_package
+    # Check if we used all the food
+    for item, qty in served.items():
+        if qty > food_store.get(item, 0):
+            msg_food(get_message("feed", "food_all_used_up", person_name=name), turns_elapsed, tone="error")
+            return {}, task_package
 
     # Deduct served amounts
     for item, qty in served.items():
         food_store[item] -= qty
 
-    # Log what was served
-    message = f"{name} was fed: "
-    message += ", ".join([f"{qty} {item} servings" for item, qty in served.items() if qty > 0])
-    return_msg = message
-
-    humans[name]["hunger"] = max(0, humans[name]["hunger"] - 10)
+    task_data = {
+        "food_items": served.copy(),
+        "hunger_reduction": min(
+            total_nutrition,
+            math.ceil(ONE_DAY_HUNGRY * multiplier)
+        ),
+        "meal_type": meal_type
+    }
 
     # Again check days of food left and warn if below two days' worth
     how_much_food_now = days_of_food_left(resources)
     if how_much_food_now < 2 and how_much_food >= 2:
-        msg_food(get_message("feed", "low_food_warning"), turns_elapsed, num_humans=NUM_HUMANS, tone="warn")
-    
+        msg_food(get_message("feed", "low_food_warning", num_humans=NUM_HUMANS), turns_elapsed, tone="warn")
+
+    return task_data, task_package
+
+
+def adjust_human_hunger(name, task_data, task_package):
+    humans = task_package["humans"]
+
+    food_items = task_data.get("food_items", {})
+    hunger_reduction = task_data.get("hunger_reduction", 10)
+
+    message = f"{name} was fed: "
+    message += ", ".join(f"{quantity} {item} servings" for item, quantity in food_items.items() if quantity > 0)
+
+    humans[name]["hunger"] = max(0, humans[name]["hunger"] - hunger_reduction)
+
     task_package = process_hunger_status(name, task_package)
-    return return_msg, task_package
+
+    return message, task_package
+
+
+def return_reserved_meal(task_data, task_package):
+    resources = task_package["resources"]
+    food_store = next((r for r in resources if r["name"] == "FoodStore"), None)
+
+    if not food_store:
+        return task_package
+
+    for item, quantity in task_data.get("food_items", {}).items():
+        food_store[item] = food_store.get(item, 0) + quantity
+
+    return task_package
 
 
 def update_food_amount(resources, food_type, amount, turns_elapsed, allow_negative=False):
@@ -122,28 +186,6 @@ def update_food_amount(resources, food_type, amount, turns_elapsed, allow_negati
         food_store[food_type] = 0  # Clamp at zero
 
     return resources
-
-
-def get_food_amount(resources, food_type):
-    # Returns the current quantity of a given food type from the FoodStore.
-    food_store = next((r for r in resources if r["name"] == "FoodStore"), None)
-    if not food_store:
-        return 0
-
-    return food_store.get(food_type, 0)
-
-
-def days_of_food_left(resources):
-    days_left = 0
-
-    ration = get_food_amount(resources, "rationPack")
-    apple = get_food_amount(resources, "apple")
-    cabbage = get_food_amount(resources, "cabbage")
-    potato = get_food_amount(resources, "potato")
-
-    days_left = (ration + apple/FOOD_PER_DAY["apple"] + cabbage/FOOD_PER_DAY["cabbage"] + potato/FOOD_PER_DAY["potato"])/NUM_HUMANS
-
-    return days_left
 
 
 def update_multiple_foods(resources, allow_negative=False, **kwargs):
@@ -188,6 +230,7 @@ def initialise_hydroponics_room(resources):
 
     # If there is no HydroponicsRoom yet, just return.
     return resources
+
 
 def get_hydroponics_summary(resources, crops):
     # Returns a dict summary of the HydroponicsRoom beds and their crops.
@@ -327,13 +370,12 @@ def continue_determine_what_to_plant_and_where(context):
     droids = task_package["droids"]
     turns_elapsed = task_package["counters"]["turns"]
 
-    okay_to_act, is_human, worker_name = can_character_act(raw_target, task_type, humans, droids, turns_elapsed )
-
+    okay_to_act, task_package = can_character_act(raw_target, TASK_PLANTING, task_package)
     if not okay_to_act:
         return return_plant_failure(context)
 
-    context["worker_name"] = worker_name
-    context["is_human"] = is_human
+    context["worker_name"] = raw_target
+    context["is_human"] = raw_target in humans
 
     food_store = next((r for r in resources if r.get("name") == "FoodStore"), None)
 
@@ -607,21 +649,41 @@ def finish_initiate_plant_task(name, crop_instructions, task_package, queued_tas
         low, high = TASK_LENGTH[task_type]
         return random.randint(low, high)
 
-    task_package["task_data"] = crop_instructions
-
     is_human = name in humans
     duration = set_task_length("plant_human") if is_human else set_task_length("plant_droid")
 
     # If they are not idle, and this was not a queued task, add this action to their queue
     if not is_idle(name, humans, droids) and not queued_task:
-        humans, droids = add_to_queue(name, humans, droids, turns_elapsed, task_type, task_data=crop_instructions )
+        humans, droids = add_to_queue(name, humans, droids, turns_elapsed, task_type, task_data=crop_instructions)
         return valid_command, task_package
 
-    return_msg, task_package = create_task(name, task_type, duration, task_package)
+    return_msg, task_package = create_task(name, task_type, duration, task_package, task_data=crop_instructions)
     msg_plant(return_msg, turns_elapsed)
 
-    # Now that the task has been created, we can clear the task_data in task_package 
-    # because this data is now in the task
-    task_package["task_data"] = {}
-
     return valid_command, task_package
+
+
+def feed_humans_waiting_for_food(task_package):
+    humans = task_package["humans"]
+    resources = task_package["resources"]
+    turns_elapsed = task_package["counters"]["turns"]
+
+    for name, human in humans.items():
+        if not human.get("awaiting_food", False):
+            continue
+
+        # A waiting human may currently be Reaping to retrieve food.
+        # Do not create an Eating task on top of another active task.
+        if human.get("task", "") != "":
+            continue
+
+        if not any_food_left(resources):
+            break
+
+        human["generated"] = True
+        return_msg, task_package = do_auto_feed(name, task_package)
+
+        if return_msg:
+            msg_food(return_msg, turns_elapsed, stamp=False)
+
+    return task_package

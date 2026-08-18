@@ -241,7 +241,7 @@ CHAIN = [
         "droidName": "null", # We randomly assign this (between the 4 droids) once this code is found and *matches the droid's firmware*
         "amount": 0,
         "msg": "Inside the Shield Manual you see firmware specs — rare, old ones. You try each of your droids, and you are fortunate that the only droid that has a matching code is {name}. They need to be assigned to the Shield.",
-    }
+    },
 ]
 
 # Replacement items - for game variability (9 in total)
@@ -280,31 +280,9 @@ REPLACEMENT = [
         "msg": "A dual purpose item. 1. It turns crystals into crystal dust and 2. Provides anger management therapy for one of your humans. Bashing away with a pseudo-hammer: fun!",
     },
     {
-        "name": "SelfPoweringStoveAndPot",
-        "category": "replacement",
-        "category_counter": 4,
-        "examinable": True,
-        "examined": False,
-        "examine_turns": 1,
-        "replaces": "MealMaker",
-        "found": False,
-        "msg": "A gleaming metal stove hums quietly. It seems to generate heat on its own. There's a pot on top — empty, for now. It's almost begging to have food put in it.",
-    },
-    {
-        "name": "ShieldOperatingCodes",
-        "category": "replacement",
-        "category_counter": 5,
-        "examinable": True,
-        "examined": False,
-        "examine_turns": 1,
-        "replaces": "ShieldManual",
-        "found": False,
-        "msg": "Now then. What are THESE? Could these numbers and letters be the way in which to bluff the OldTerminal into doing your bidding? Anathusa, via the comms terminal says: 'Don't be too overconfident'. You're unsure what she means by that.",
-    },
-    {
         "name": "BlackTablet",
         "category": "replacement",
-        "category_counter": 6,
+        "category_counter": 4,
         "examinable": True,
         "examined": False,
         "examine_turns": 1,
@@ -313,9 +291,20 @@ REPLACEMENT = [
         "msg": "It's dark and mysterious. Like one of your former romantic partners, long since departed. Give this to one of the droids. They'll figure it out.",
     },
     {
+        "name": "CrystalVault",
+        "category": "replacement",
+        "category_counter": 5,
+        "examinable": True,
+        "examined": False,
+        "examine_turns": 1,
+        "replaces": "CrystalField",
+        "found": False,
+        "msg": "The door of this mysterious cupboard creaks as it opens and reveals a collection of {R} red, {I} indigo and {G} gold crystals. They seem to have been here for a very long time and are somewhat degraded in quality.",
+    },
+    {
         "name": "DroidPlugInModule",
         "category": "replacement",
-        "category_counter": 7,
+        "category_counter": 6,
         "examinable": True,
         "examined": False,
         "examine_turns": 1,
@@ -326,7 +315,7 @@ REPLACEMENT = [
     {
         "name": "CypherCardInsert",
         "category": "replacement",
-        "category_counter": 8,
+        "category_counter": 7,
         "examinable": True,
         "examined": False,
         "examine_turns": 1,
@@ -337,7 +326,7 @@ REPLACEMENT = [
     {
         "name": "HandWrittenNote",
         "category": "replacement",
-        "category_counter": 9,
+        "category_counter": 8,
         "examinable": True,
         "examined": False,
         "examine_turns": 1,
@@ -345,75 +334,49 @@ REPLACEMENT = [
         "found": False,
         "msg": "A mysterious note in some sort of obscure language. You will have to give this to one of the droids and hope that they know this language. Or ask Arylss and Cindlyss. Likely they might know.",
     },
-]
-
-# Novelty items 6 in total
-NOVELTY = [
     {
-        "name": "AstrologyWheel",
-        "category": "novelty",
-        "category_counter": 1,
+        "name": "Campfire",
+        "category": "replacement",
+        "category_counter": 9,
         "examinable": True,
         "examined": False,
-        "examine_turns": 4,
+        "examine_turns": 0,
+        "replaces": "MealMaker",  # In combination with CampFire (next item)
         "found": False,
-        "isCritical": False,
-        "msg": "This item is made of recycled plastic and has what you *think* are astrology symbols on it. This could be evil, could be helpful. Toss a coin as to which it is."
+        "msg": "A metal firepit, with a grate on top. You can cook food in it, if you can find some wood somewhere.",
     },
     {
-        "name": "MultiFunctionTool",
-        "category": "novelty",
-        "category_counter": 2,
+        "name": "StackOfOldWood",
+        "category": "replacement",
+        "category_counter": 10,
         "examinable": True,
         "examined": False,
-        "examine_turns": 4,
+        "examine_turns": 0,
+        "replaces": "MealMaker",  # In combination with CampFire (next item)
         "found": False,
-        "isCritical": False,
-        "msg": "This thing could possibly rebuild the entire Outpost by itself. If anyone knew how to use it. Even the Droids have no idea about how to use this item, and that has you concerned. A little."
+        "msg": "Why did you bother examining this? It's a stack of wood. Old wood. Exactly as described."
     },
     {
-        "name": "DiscoInfernoBall",
-        "category": "novelty",
-        "category_counter": 3,
+        "name": "ShieldOperatingCodes",
+        "category": "replacement",
+        "category_counter": 11,
         "examinable": True,
         "examined": False,
         "examine_turns": 1,
+        "replaces": "ShieldManual",
         "found": False,
-        "isCritical": False,
-        "msg": "This is not just ANY mirror ball. This one promises a 'Disco Inferno'. Don't let Mike go anywhere near it. That didn't turn out well the last time something like this showed up."
+        "msg": "Now then. What are THESE? Could these numbers and letters be the way in which to bluff the OldTerminal into doing your bidding? Anathusa, via the comms terminal says: 'Don't be too overconfident'. You're unsure what she means by that.",
     },
     {
-        "name": "RadarOfDestiny",
-        "category": "novelty",
-        "category_counter": 4,
+        "name": "OperatingInstructions",
+        "category": "replacement",
+        "category_counter": 12,
         "examinable": True,
         "examined": False,
-        "examine_turns": 3,
+        "examine_turns": 2,
+        "replaces": "ShieldManual",  # In combination with the ShieldOperatingCodes
         "found": False,
-        "isCritical": False,
-        "msg": "A hand-held radar device that is pinging faintly. It points towards vague doom. It could potentially be indicating total destruction, but it isn't. Very encouraging."
-    },
-    {
-        "name": "BoxOfDynamite",
-        "category": "novelty",
-        "category_counter": 5,
-        "examinable": True,
-        "examined": False,
-        "examine_turns": 1,
-        "found": False,
-        "isCritical": False,
-        "msg": "'Yeah great', says Zarasena, on hearing of this find. 'You found something that will blow up the entire Outpost. Good job. Quality work. Please hide that somewhere.'"
-    },
-    {
-        "name": "InformerPilatesBench",
-        "category": "novelty",
-        "category_counter": 6,
-        "examinable": True,
-        "examined": False,
-        "examine_turns": 1,
-        "found": False,
-        "isCritical": False,
-        "msg": "Looks like some sort of place where would-be criminals sit and do exercises while waiting to speak to law enforcement. Usefulness: likely very low."
+        "msg": "Why did you bother examining this? It's a stack of wood. Old wood. Exactly as described."
     },
 ]
 
@@ -553,7 +516,7 @@ JUNK = [
         "examined": False,
         "examine_turns": 0,
         "found": False,
-        "msg": "Looks like it's been here for eight hundred years. Almsot every page contains the word 'WHY?' written repeatedly. Burning it is probably the best option."
+        "msg": "Looks like it's been here for eight hundred years. Almost every page contains the word 'WHY?' written repeatedly. Burning it is probably the best option."
     },
     {
         "name": "EmptyTeaTin",
@@ -573,7 +536,7 @@ JUNK = [
         "examined": False,
         "examine_turns": 0,
         "found": False,
-        "msg": "Suspiciously warm to the touch. Does this mean it's radioactive? You wished you paid attention in your high school chemistry class."
+        "msg": "Suspiciously warm to the touch. Does this mean it's radioactive? You wish you'd paid attention in your high school chemistry class."
     },
     {
         "name": "CoilOfWire",
@@ -833,7 +796,7 @@ JUNK = [
         "examined": False,
         "examine_turns": 0,
         "found": False,
-        "msg": "Now where's the fun in this? Someone decided hitch hiking on a remote planet was a bad idea! There should be a Vogon transport along any time soon. Surely!"
+        "msg": "Now where's the fun in this? Someone decided hitch hiking on a remote planet was a bad idea! There should be a Vogon transport passing through here very soon. Surely!"
     },
     {
         "name": "YouSpinMeRightRoundBabyRightRound",
@@ -886,14 +849,14 @@ JUNK = [
         "msg": "All different colours. Can be used for just about anything! Apparently."
     },
     {
-        "name": "StackOfOldWood",
+        "name": "RainGauge",
         "category": "junk",
         "category_counter": 48,
         "examinable": True,
         "examined": False,
         "examine_turns": 0,
         "found": False,
-        "msg": "Why did you bother examining this? It's a stack of wood. Old wood. Exactly as described."
+        "msg": "As far as you can tell, it never rains on the Aynsefian planetary surface. But you can keep this item anyway. It's mostly harmless."
     },
     {
         "name": "OpenMikeNightInvitation",
@@ -1055,19 +1018,273 @@ JUNK = [
         "found": False,
         "msg": "There's one of those here too! You are truly astonished at this find. When the shield goes up, and you have free time, it might be worth a read."
     },
+    {
+        "name": "AstrologyWheel",
+        "category": "junk",
+        "category_counter": 65,
+        "examinable": True,
+        "examined": False,
+        "examine_turns": 4,
+        "found": False,
+        "msg": "This item is made of recycled plastic and has what you *think* are astrology symbols on it. This could be evil, could be helpful. Toss a coin as to which it is."
+    },
+    {
+        "name": "MultiFunctionTool",
+        "category": "junk",
+        "category_counter": 66,
+        "examinable": True,
+        "examined": False,
+        "examine_turns": 4,
+        "found": False,
+        "msg": "This thing could possibly rebuild the entire Outpost by itself. If anyone knew how to use it. Even the Droids have no idea about how to use this item, and that has you concerned. A little."
+    },
+    {
+        "name": "DiscoInfernoBall",
+        "category": "junk",
+        "category_counter": 67,
+        "examinable": True,
+        "examined": False,
+        "examine_turns": 1,
+        "found": False,
+        "msg": "This is not just ANY mirror ball. This one promises a 'Disco Inferno'. Don't let Mike go anywhere near it. That didn't turn out well the last time something like this showed up."
+    },
+    {
+        "name": "RadarOfDestiny",
+        "category": "junk",
+        "category_counter": 68,
+        "examinable": True,
+        "examined": False,
+        "examine_turns": 3,
+        "found": False,
+        "msg": "A hand-held radar device that is pinging faintly. It points towards vague doom. It could potentially be indicating total destruction, but it isn't. Very encouraging."
+    },
+    {
+        "name": "BoxOfDynamite",
+        "category": "junk",
+        "category_counter": 69,
+        "examinable": True,
+        "examined": False,
+        "examine_turns": 1,
+        "found": False,
+        "msg": "'Yeah great', says Zarasena, on hearing of this find. 'You found something that will blow up the entire Outpost. Good job. Quality work. Please hide that somewhere.'"
+    },
+    {
+        "name": "InformerPilatesBench",
+        "category": "junk",
+        "category_counter": 70,
+        "examinable": True,
+        "examined": False,
+        "examine_turns": 1,
+        "found": False,
+        "msg": "Looks like some sort of place where would-be criminals sit and do exercises while waiting to speak to law enforcement. Usefulness: likely very low."
+    },
+    {
+        "name": "PresentationEnvelope",
+        "category": "junk",
+        "category_counter": 71,
+        "examinable": True,
+        "examined": False,
+        "examine_turns": 0,
+        "found": False,
+        "msg": "It's a partially opaque red plastic envelope for a small printed report of some sort. There's no report in it and no paper either. If you were hoping for a life-changing dossier, you're out of luck."
+    },
+    {
+        "name": "StoneArrangement",
+        "category": "junk",
+        "category_counter": 72,
+        "examinable": True,
+        "examined": False,
+        "examine_turns": 1,
+        "found": False,
+        "msg": "It's a mini collection of stones, in a flat ceramic pot, with a marker on the side that seems to point to the solstice. Where that is on this planet, you have no idea. A nice little shelf knick-knack, but tht's all."
+    },
+    {
+        "name": "Forty-sixPensInABox",
+        "category": "junk",
+        "category_counter": 73,
+        "examinable": True,
+        "examined": False,
+        "examine_turns": 1,
+        "found": False,
+        "msg": "It's a cardboard box of writing pens. Forty-six in total. The side of the box has been used extensively to test if the pens work. It appears the ink has long since dried in all of them. Do you have a bin yet?"
+    },
+    {
+        "name": "ShelfBracket",
+        "category": "junk",
+        "category_counter": 74,
+        "examinable": True,
+        "examined": False,
+        "examine_turns": 0,
+        "found": False,
+        "msg": "This is a shelf bracket that needs a mate. At least one. And a shelf. You have neither. Maybe you can fix it to the wall and use it as a coat hook. But really, Commander: priorities."
+    },
+    {
+        "name": "SupplementPowder",
+        "category": "junk",
+        "category_counter": 75,
+        "examinable": True,
+        "examined": False,
+        "examine_turns": 0,
+        "found": False,
+        "msg": "A plastic jar of dodgy looking supplement powder. Someone has written 'supplement' on the side of the jar. Is this to be taken orally? Or used in a concrete mixer? It's impossible to tell which of the two is more likely."
+    },
+    {
+        "name": "TaserGun",
+        "category": "junk",
+        "category_counter": 76,
+        "examinable": True,
+        "examined": False,
+        "examine_turns": 1,
+        "found": False,
+        "msg": "This is a gun-like object that {name} thinks is actually a taser. It is missing a cartridge. {name} offers to go and look for the cartridge. You decline."
+    },
+    {
+        "name": "RustyPizzaTray",
+        "category": "junk",
+        "category_counter": 77,
+        "examinable": True,
+        "examined": False,
+        "examine_turns": 0,
+        "found": False,
+        "msg": "Is there anything so sad as a badly rusted pizza tray with no pizza and no pizza-oven? Being reminded of what you lack here at this Outpost is not much fun."
+    },
+    {
+        "name": "RedWireAndScissors",
+        "category": "junk",
+        "category_counter": 78,
+        "examinable": True,
+        "examined": False,
+        "examine_turns": 1,
+        "found": False,
+        "msg": "It is a length of red electrical wire attached to a pair of old scissors. You can now cut the red wire safely, it seems."
+    },
+    {
+        "name": "PeachFlapsBox",
+        "category": "junk",
+        "category_counter": 79,
+        "examinable": True,
+        "examined": False,
+        "examine_turns": 0,
+        "found": False,
+        "msg": "A box that used to have something called 'Peach Flaps' in it, whatever they are, or were. It is empty, and the top has been removed. Not likely to help with getting the Shield up."
+    },
+    {
+        "name": "PortableFlameThrower",
+        "category": "junk",
+        "category_counter": 80,
+        "examinable": True,
+        "examined": False,
+        "examine_turns": 1,
+        "found": False,
+        "msg": "It's a flame throwing wepaon, that you can carry around with you. It's written on the side of the handle. Today you learned that, theoretically, there are also non-portable flamethrowers. Somewhere."
+    },
+    {
+        "name": "CarbonFootprint",
+        "category": "junk",
+        "category_counter": 81,
+        "examinable": True,
+        "examined": False,
+        "examine_turns": 5,
+        "found": False,
+        "msg": "Finally! A real carbon footprint - looks like a big cat's paw print, you think - left in a piece of black coal."
+    },
+    {
+        "name": "AngerBall",
+        "category": "junk",
+        "category_counter": 82,
+        "examinable": True,
+        "examined": False,
+        "examine_turns": 1,
+        "found": False,
+        "msg": "A soft plastic ball, about the size of your fist, with the words 'Punch Me!' written on it. One of the more useful things that have been found so far."
+    },
+    {
+        "name": "FastTrack",
+        "category": "junk",
+        "category_counter": 83,
+        "examinable": True,
+        "examined": False,
+        "examine_turns": 0,
+        "found": False,
+        "msg": "A stretch of train track from a toy train set, with the rest of the track - and the train - nowhere to be found."
+    },
+    {
+        "name": "UniversalCerealBust",
+        "category": "junk",
+        "category_counter": 84,
+        "examinable": True,
+        "examined": False,
+        "examine_turns": 1,
+        "found": False,
+        "msg": "It is a bust of a famous woman in some universe who invented a breakfast cereal called 'Universal' and was eulogised for it. This one goes in the bin. It's seen better days."
+    },
+    {
+        "name": "PaperClipBox",
+        "category": "junk",
+        "category_counter": 85,
+        "examinable": True,
+        "examined": False,
+        "examine_turns": 0,
+        "found": False,
+        "msg": "Just what every office needs: a box designed specifically to hold paper clips. You have none of those, but if you did, this is the perfect place to store them."
+    },
+    {
+        "name": "CarpetSquare",
+        "category": "junk",
+        "category_counter": 86,
+        "examinable": True,
+        "examined": False,
+        "examine_turns": 0,
+        "found": False,
+        "msg": "Every formerly inhabited building has a carpet square somewhere, left behind. This Outpost is no exception to that rule. This square is a dirty brown shag pile that looks decidely unhygienic."
+    },
+    {
+        "name": "Aggrandizer",
+        "category": "junk",
+        "category_counter": 87,
+        "examinable": True,
+        "examined": False,
+        "examine_turns": 2,
+        "found": False,
+        "msg": "This is a small device that seems to make things appear larger than they actually are. Not especially useful at first glance. Or the second. Or the third."
+    },
+    {
+        "name": "LightStick",
+        "category": "junk",
+        "category_counter": 88,
+        "examinable": True,
+        "examined": False,
+        "examine_turns": 0,
+        "found": False,
+        "msg": "A portable lighting device that emits a faint glow. It's not particularly useful, but it may provide some illumination in the darker areas of your existence."
+    },
+    {
+        "name": "ListOfVolunteers",
+        "category": "junk",
+        "category_counter": 89,
+        "examinable": True,
+        "examined": False,
+        "examine_turns": 0,
+        "found": False,
+        "msg": "Fred. Millie. George. Susan. And a few others. This is a list of volunteers for some event that happened long ago. You wonder if any of them are still alive."
+    },
+    {
+        "name": "SmallPhillipsHeadScrewdriver",
+        "category": "junk",
+        "category_counter": 90,
+        "examinable": True,
+        "examined": False,
+        "examine_turns": 1,
+        "found": False,
+        "msg": "A phillips-head screwdriver that fits nicely into the palm of your hand. The business end is blunted and useless. Another item that is not likely to be useful in getting the shield up."
+    },
 ]
 
-
-# items.py – master item registry
-
-# If your items are split into several lists, build a single flat list here.
-# Adjust this if your list names differ.
 ALL_ITEMS = []
 
 ALL_ITEMS.extend(RESOURCES)
 ALL_ITEMS.extend(CHAIN)
 ALL_ITEMS.extend(REPLACEMENT)
-ALL_ITEMS.extend(NOVELTY)
 ALL_ITEMS.extend(JUNK)
 
 # Map from name -> template dict

@@ -1,9 +1,10 @@
 # command_utils.py
 
 import os
+from copy import deepcopy
 
 from constants import (TASK_ASSIGNED, TASK_CHARGING, TASK_EXAMINING, TASK_EXPLORING, TASK_EATING, TASK_MINING, TASK_PLANTING, TASK_REAPING, TASK_REFUELING,
-                       TASK_TOWING_DROID, AVAILABLE_FILES, POWER_PER_RED, POWER_PER_INDIGO, POWER_PER_GOLD, FULL_CHARGE, GENDERS, MALE, FEMALE)
+                       TASK_TOWING_DROID, AVAILABLE_FILES, POWER_PER_RED, POWER_PER_INDIGO, POWER_PER_GOLD, FULL_DROID_CHARGE, GENDERS, MALE, FEMALE)
 from lore.lore_ingame import get_message
 from lore.lore_story import get_story_message
 import lore.user_interface as ui_runtime
@@ -11,15 +12,15 @@ from lore.user_interface import get_input, msg_story, msg_info, msg_error, log_a
 
 
 # The all important function for getting things done
-def create_task(name, task_type, duration, task_package):
+def create_task(name, task_type, duration, task_package, task_data=None, item_name=""):
     tasks = task_package["tasks"]
     humans = task_package["humans"]
     droids = task_package["droids"]
-    item_name = task_package["item"]
-    task_data = task_package["task_data"]
     return_msg = ""
     is_human = name in humans
     pronouns = get_pronouns(name, is_human=is_human)
+    if task_data is None:
+        task_data = {}
 
     # Now display the user message
     # Need to adust for duration as the tasks will be decremented at the end of the turn.
@@ -61,37 +62,20 @@ def create_task(name, task_type, duration, task_package):
         "duration": duration
     }
 
-    # Store extra items in the task
-    if task_type == TASK_EXAMINING:
+    # Store optional task-specific information
+    if item_name:
         tasks[str(task_id)]["item_name"] = item_name
-    elif task_type == TASK_MINING:
+
+    if task_data:
+        tasks[str(task_id)]["task_data"] = deepcopy(task_data)
+
+    if task_type == TASK_MINING:
         tasks[str(task_id)]["worker"] = name
-    elif task_type == TASK_ASSIGNED:
-        tasks[str(task_id)]["item_name"] = item_name
-        if task_data:
-            tasks[str(task_id)]["task_data"] = task_data
-    elif task_type == TASK_PLANTING or task_type == TASK_REFUELING:
-        tasks[str(task_id)]["task_data"] = task_data
 
     # Set the status for the character
     set_task_status_for_character(name, task_type, item_name, humans, droids, task_package["counters"]["turns"])
 
     return return_msg, task_package
-
-
-def set_task_status_for_character(name, task_type, item_name, humans, droids, turns_elapsed):
-    #Updates a character's task and item fields to reflect what they're doing.
-    
-    if name in humans:
-        humans[name]["task"] = task_type
-        humans[name]["item"] = item_name
-    elif name in droids:
-        droids[name]["task"] = task_type
-        droids[name]["item"] = item_name
-    else:
-        msg_error(get_message("error", "unknown_assign", name=name), turns_elapsed)
-
-    return humans, droids
 
 
 def set_task_status_for_character(name, task_type, item_name, humans, droids, turns_elapsed):
@@ -147,8 +131,12 @@ def remove_task_by_id(task_id, task_package):
     humans = task_package["humans"]
     droids = task_package["droids"]
     turns_elapsed = task_package["counters"]["turns"]
+    task_being_removed = ""
+    task_to_clear = ""
 
     task = tasks.get(task_id)
+    if task:
+        task_being_removed = task.get("type", "")
 
     if not task:
         msg_error(get_message("error", "no_existing_task", name=task_id), turns_elapsed)
@@ -157,7 +145,15 @@ def remove_task_by_id(task_id, task_package):
     name = task["name"]
     del tasks[task_id]
 
-    humans, droids = clear_task_for_character(name, "", humans, droids)
+    # Now clear the character's task and item fields if they match the task being removed
+    if name in humans:
+        task_to_clear = humans[name]["task"]
+    elif name in droids:
+        task_to_clear = droids[name]["task"]
+        
+    if task_being_removed == task_to_clear:
+        item_name = ""
+        humans, droids = clear_task_for_character(name, item_name, humans, droids)
 
     return task_package
 
@@ -251,7 +247,8 @@ def handle_read_command(task_package, turns_elapsed, subject=None):
         answer = get_input("input", "read", turns_elapsed, files=can_read_these)
 
         if answer and answer == ui_runtime.GUI_PENDING:
-            return None
+            awaiting_input = True
+            return awaiting_input, task_package
 
 
 def resume_read_command(subject, context):
@@ -294,9 +291,9 @@ def get_full_character_tasks(name, humans, droids):
         current = humans[name]["task"] if humans[name]["task"] else "--Idle--"
         queue = humans[name]["queue"]
     elif name in droids:
-        from constants import FULL_CHARGE
+        from constants import FULL_DROID_CHARGE
         charge = droids[name]["charge"]
-        status = f"{int((charge / FULL_CHARGE) * 100)}%"
+        status = f"{int((charge / FULL_DROID_CHARGE) * 100)}%"
         current = droids[name]["task"] if droids[name]["task"] else "--Idle--"
         queue = droids[name]["queue"]
     else:
@@ -340,7 +337,7 @@ def is_droid_being_charged_or_towed(droid_name, task_package):
     return False
 
 
-def get_refuel_power_supply_and_vials(name, task_package):
+def get_refuel_power_supply_and_vials(name, task_package, require_vials=True):
     resources = task_package["resources"]
     humans = task_package["humans"]
     droids = task_package["droids"]
@@ -349,12 +346,12 @@ def get_refuel_power_supply_and_vials(name, task_package):
 
     if not power_supply:
         return_msg = get_message("refuel", "no_power_supply")
-        humans, droids = clear_task_for_character(name, "", humans, droids)
+        humans, droids = clear_task_for_character(name,"", humans, droids)
         return None, None, return_msg
 
     vial_store = power_supply.get("VialStore", {})
 
-    if not vial_store or all(v == 0 for v in vial_store.values()):
+    if require_vials and (not vial_store or all(v == 0 for v in vial_store.values())):
         return_msg = get_message("refuel", "no_vials_fail", name=name)
         humans, droids = clear_task_for_character(name, "", humans, droids)
         return power_supply, None, return_msg
@@ -362,19 +359,23 @@ def get_refuel_power_supply_and_vials(name, task_package):
     return power_supply, vial_store, ""
 
 
-def choose_vials_and_display_power_produced(name, task_package, amount_only=False):
+def choose_vials_and_display_power_produced(name, task_package, amount_only=False, task_data=None):
     # Estimate how much power this will produce, or apply power after refuelling.
     turns_elapsed = task_package["counters"]["turns"]
-    task_data = task_package.get("task_data", {})
+    if not task_data:
+        task_data = {}
 
     return_msg = ""
     total_power = 0
     red = indigo = gold = 0
+    require_vials = True
+    if task_data:
+        require_vials = False
 
-    power_supply, vial_store, error_msg = get_refuel_power_supply_and_vials(name, task_package)
+    power_supply, vial_store, error_msg = get_refuel_power_supply_and_vials(name, task_package, require_vials=require_vials)
 
     if error_msg:
-        return error_msg, total_power, task_package, red, indigo, gold
+        return error_msg, total_power, task_package
 
     if amount_only:
         # We are summarising after the fact, from complete_refuel_task().
@@ -399,7 +400,7 @@ def choose_vials_and_display_power_produced(name, task_package, amount_only=Fals
                 f"{indigo} indigo crystal vials and {gold} gold crystal vials was {total_power} units."
             )
 
-        return return_msg, total_power, task_package, red, indigo, gold
+        return return_msg, total_power, task_package
 
     # CLI fallback path only.
     return choose_vials_for_refuel_cli(name, task_package, power_supply, vial_store)
@@ -424,7 +425,7 @@ def choose_vials_for_refuel_cli(name, task_package, power_supply, vial_store):
         gold = gold_avail
 
         total_power = calculate_refuel_power(red, indigo, gold)
-        num_days = total_power // FULL_CHARGE
+        num_days = total_power // FULL_DROID_CHARGE
 
         summary_msg = (
             f"Using all vials will create {total_power} units of power "
@@ -439,7 +440,7 @@ def choose_vials_for_refuel_cli(name, task_package, power_supply, vial_store):
                 f"and add an extra {total_power} units and {num_days} days' worth of droid charges."
             )
 
-            return return_msg, total_power, task_package, red, indigo, gold
+            return return_msg, total_power, task_package
 
     while True:
         red = get_integer_input(f"How many RED crystals to use for refuelling? (0–{red_avail}): ", 0, red_avail)
@@ -448,10 +449,10 @@ def choose_vials_for_refuel_cli(name, task_package, power_supply, vial_store):
 
         if red == 0 and indigo == 0 and gold == 0:
             return_msg = "No crystals selected for processing. Task cancelled."
-            return return_msg, total_power, task_package, red, indigo, gold
+            return return_msg, total_power, task_package
 
         total_power = calculate_refuel_power(red, indigo, gold)
-        num_days = total_power // FULL_CHARGE
+        num_days = total_power // FULL_DROID_CHARGE
 
         summary_msg = (
             f"Summary: {red} red, {indigo} indigo, {gold} gold vials will create "
@@ -466,7 +467,7 @@ def choose_vials_for_refuel_cli(name, task_package, power_supply, vial_store):
 
         if not retry:
             return_msg = get_message("refuel", "aborted", name=name)
-            return return_msg, total_power, task_package, red, indigo, gold
+            return return_msg, total_power, task_package
 
     return_msg = (
         f"{name} is now going to refuel the PowerSupply with only the amounts you have chosen. "
@@ -476,7 +477,7 @@ def choose_vials_for_refuel_cli(name, task_package, power_supply, vial_store):
 
     remove_vials_from_store(vial_store, red, indigo, gold)
 
-    return return_msg, total_power, task_package, red, indigo, gold
+    return return_msg, total_power, task_package
 
 
 def calculate_refuel_power(red, indigo, gold):
@@ -494,4 +495,4 @@ def remove_vials_from_store(vial_store, red, indigo, gold):
 
 
 def get_refuel_days(total_power):
-    return total_power // FULL_CHARGE
+    return total_power // FULL_DROID_CHARGE

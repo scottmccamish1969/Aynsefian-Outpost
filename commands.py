@@ -2,17 +2,21 @@
 
 import random
 
-from command_utils import (create_task, is_droid_being_charged_or_towed, get_refuel_power_supply_and_vials, remove_vials_from_store,
-                           calculate_refuel_power, get_refuel_days, get_pronouns, clear_task_for_character)
-from constants import (TASK_CHARGING, TASK_EXPLORING, TASK_PLANTING, TASK_REAPING, TASK_EXAMINING, TASK_MINING, TASK_ASSIGNED, TASK_EATING,
-                       TASK_REFUELING, TASK_TOWING_DROID, CHARGE_DURATION, TASK_LENGTH, ASSIGNABLE_ITEMS, LOW_CHARGE_FLAG, IDLE_CHARGE_USAGE,
-                       POWER_PER_RED, POWER_PER_INDIGO, POWER_PER_GOLD, NUM_DROIDS, FULL_CHARGE, TOW_TASK_LENGTH, COMMAND_MAP)
+from command_utils import (create_task, is_droid_being_charged_or_towed, get_refuel_power_supply_and_vials, 
+                           remove_vials_from_store, calculate_refuel_power, get_refuel_days, get_pronouns, 
+                           clear_task_for_character, set_task_status_for_character)
+from constants import (TASK_CHARGING, TASK_EXPLORING, TASK_PLANTING, TASK_REAPING, TASK_EXAMINING, TASK_MINING, TASK_ASSIGNED,
+                       TASK_EATING, TASK_REFUELING, TASK_TOWING_DROID, CHARGE_DURATION, TASK_LENGTH, ASSIGNABLE_ITEMS,
+                       LOW_CHARGE_FLAG, IDLE_CHARGE_USAGE, POWER_PER_RED, POWER_PER_INDIGO, POWER_PER_GOLD, NUM_DROIDS,
+                       FULL_DROID_CHARGE, TOW_TASK_LENGTH, COMMAND_MAP, TaskStartOutcome, NORMAL_MEAL_MULTIPLIER, 
+                       EMERGENCY_MEAL_MULTIPLIER, ONE_DAY_HUNGRY)
 from lore.lore_ingame import get_message
 import lore.user_interface as ui_runtime
-from lore.user_interface import (get_input, msg_plant, msg_explore, msg_power, msg_crystal, msg_resource, msg_mine, msg_info, msg_shield, 
-                                 msg_error, msg_warn, msg_food, get_confirm, get_integer_input)
-from planting import determine_what_to_plant_and_where, finish_initiate_plant_task
-from queuing import add_to_queue, is_idle, get_next_task_from_queue_if_any
+from lore.user_interface import (get_input, msg_plant, msg_explore, msg_power, msg_crystal, msg_resource, msg_mine, msg_info,
+                                 msg_shield, msg_error, msg_warn, msg_food, get_confirm, get_integer_input)
+from planting import determine_what_to_plant_and_where, finish_initiate_plant_task, select_and_reserve_meal
+from queuing import add_to_queue, is_idle
+from resources import get_power_required_for_full_charge, try_start_charge_task
 from status import display_character_summary, list_crystals
 from utils import get_best_match, can_character_act, set_shield_state, reset_config, save_config, parse_integer_answer
 
@@ -88,7 +92,7 @@ def parse_command_targets(qualifier, task_type, task_package):
         found_valid_name = True
 
     elif qualifier == "hungry" and supports_hungry:
-        targets = [h for h in humans if humans[h]["state"] in ("Hungry", "Starving", "Near Death")]
+        targets = [h for h in humans if humans[h]["state"] in ("Hungry", "Starving", "NearDeath")]
         found_valid_name = True
 
     elif qualifier == "low" and supports_low:
@@ -104,7 +108,7 @@ def parse_command_targets(qualifier, task_type, task_package):
                 found_valid_name = True
 
     if not found_valid_name:
-        msg_error(get_message("error", "unknown_worker", name=qualifier, task=task_type), turns_elapsed)
+        msg_error(get_message("error", "unknown_worker", name=qualifier), turns_elapsed)
         return None
 
     return targets
@@ -115,6 +119,7 @@ def resume_action_command(answer, context):
     task_type = context["task_type"]
 
     valid_command = False
+    outcome = TaskStartOutcome.INVALID
 
     if task_type == TASK_EXPLORING:
         valid_command, task_package = initiate_explore_task(answer, task_package)
@@ -138,10 +143,16 @@ def resume_action_command(answer, context):
         valid_command, task_package = initiate_mine_task(answer, task_package)
 
     elif task_type == TASK_REFUELING:
-        valid_command, task_package - initiate_refuel_task(answer, task_package)
+        valid_command, task_package = initiate_refuel_task(answer, task_package)
 
     elif task_type == TASK_ASSIGNED:
-        valid_command, task_package = handle_assign_command(answer, task_package)
+        outcome, task_package = handle_assign_command(answer, task_package)
+        if outcome == TaskStartOutcome.INVALID:
+            valid_command = False
+        elif outcome == TaskStartOutcome.STARTED:
+            valid_command = True
+        elif outcome == TaskStartOutcome.AWAITING_INPUT:
+            return None     # We are awaiting input, so do not resume turn processing yet
 
     else:
         # Fallback for any task type that hasn't been wired yet
@@ -166,6 +177,9 @@ def initiate_feed_task(qualifier, task_package):
     turns_elapsed = task_package["counters"]["turns"]
     task_type = TASK_EATING
     valid_command = False
+    task_data = {}
+    multiplier = NORMAL_MEAL_MULTIPLIER
+    hunger_reduction = 0
 
     feed_targets = parse_command_targets(qualifier, task_type, task_package)
 
@@ -180,19 +194,40 @@ def initiate_feed_task(qualifier, task_package):
     if isinstance(feed_targets, str):
         feed_targets = feed_targets.split()
 
-    duration = set_task_length("feed_human")
+    task_length_key = ("feed_human_emergency" if multiplier == EMERGENCY_MEAL_MULTIPLIER else "feed_human")
+    low, high = TASK_LENGTH[task_length_key]
+    duration = random.randint(low, high)
 
     # Step 3: Handle special keywords
     if feed_targets == ["all"]:
         for name in humans:
+            # Skip a deceased human 🪦
+            if humans[name]["state"] == "Deceased":
+                continue
+
+            # Reserve the food
+            if humans[name]["state"] in ("Starving", "NearDeath"):
+                multiplier = EMERGENCY_MEAL_MULTIPLIER
+            else:
+                multiplier = NORMAL_MEAL_MULTIPLIER
+            hunger_reduction = multiplier * ONE_DAY_HUNGRY
+            task_data, task_package = select_and_reserve_meal(name, multiplier, hunger_reduction, task_package)
+            if not task_data:
+                continue
 
             # If they are not idle, add this action to their queue
             if not is_idle(name, humans, droids):
-                humans, droids = add_to_queue(name, humans, droids, turns_elapsed, task_type)
+                humans[name]["awaiting_food"] = False
+                humans[name]["food_wait_declined"] = False
+                humans, droids = add_to_queue(name, humans, droids, turns_elapsed, task_type, task_data=task_data)
                 continue
 
-            # Else if they *are* idle, create the task
-            return_msg, task_package = create_task(name, task_type, duration, task_package)
+            # Clear the flags - food is now reserved for them
+            humans[name]["awaiting_food"] = False
+            humans[name]["food_wait_declined"] = False
+
+            # Create the task
+            return_msg, task_package = create_task(name, task_type, duration, task_package, task_data=task_data)
             
             msg_food(return_msg, turns_elapsed)
             valid_command = True
@@ -205,14 +240,24 @@ def initiate_feed_task(qualifier, task_package):
             msg_food("feed", "no_hungry_humans", turns_elapsed, tone="warn")
             return valid_command, task_package
         
-        for name in hungry_people:        
+        for name in hungry_people:
+            # Reserve the food
+            if humans[name]["state"] in ("Starving", "NearDeath"):
+                multiplier = EMERGENCY_MEAL_MULTIPLIER
+            else:
+                multiplier = NORMAL_MEAL_MULTIPLIER
+            hunger_reduction = multiplier * ONE_DAY_HUNGRY
+            task_data, task_package = select_and_reserve_meal(name, multiplier, hunger_reduction, task_package)
+            if not task_data:
+                continue
+
             # If they are not idle, add this action to their queue
             if not is_idle(name, humans, droids):
-                humans, droids = add_to_queue(name, humans, droids, turns_elapsed, task_type)
+                humans, droids = add_to_queue(name, humans, droids, turns_elapsed, task_type, task_data=task_data)
                 continue
 
             # Else if they *are* idle, create the task
-            return_msg, task_package = create_task(name, task_type, duration, task_package)
+            return_msg, task_package = create_task(name, task_type, duration, task_package, task_data=task_data)
             msg_food(return_msg, turns_elapsed)
             valid_command = True
             
@@ -222,16 +267,26 @@ def initiate_feed_task(qualifier, task_package):
     for raw_target in feed_targets:
         name = get_best_match(raw_target, list(humans.keys()) + list(droids.keys()))
 
+        # Reserve the food
+        if humans[name]["state"] in ("Starving", "NearDeath"):
+            multiplier = EMERGENCY_MEAL_MULTIPLIER
+        else:
+            multiplier = NORMAL_MEAL_MULTIPLIER
+        hunger_reduction = multiplier * ONE_DAY_HUNGRY
+        task_data, task_package = select_and_reserve_meal(name, multiplier, hunger_reduction, task_package)
+        if not task_data:
+            continue
+
         # If they are not idle, add this action to their queue
         if not is_idle(name, humans, droids) and name in humans:
             valid_command = True
-            humans, droids = add_to_queue(name, humans, droids, turns_elapsed, task_type)
+            humans, droids = add_to_queue(name, humans, droids, turns_elapsed, task_type, task_data=task_data)
             continue
 
         # Else if they *are* idle, create the task
         is_human = name in humans
         if is_human:
-            return_msg, task_package = create_task(name, task_type, duration, task_package)
+            return_msg, task_package = create_task(name, task_type, duration, task_package, task_data=task_data)
             msg_food(return_msg, turns_elapsed)
             valid_command = True
         elif name in droids:
@@ -243,175 +298,218 @@ def initiate_feed_task(qualifier, task_package):
 
 
 def initiate_charge_task(qualifier, task_package):
-    humans = task_package["humans"]
-    droids = task_package["droids"]
     resources = task_package["resources"]
     turns_elapsed = task_package["counters"]["turns"]
     task_type = TASK_CHARGING
-    valid_command = False
 
-    power_resource = next((r for r in resources if r.get("name") == "PowerSupply"), None)
+    power_resource = next((r for r in resources if r.get("name") == "PowerSupply"),None)
 
     if not power_resource or not power_resource.get("found", False):
         msg_power(get_message("charge", "nowhere_to_charge"), turns_elapsed, tone="warn")
-        return valid_command, task_package
+        return False, task_package
 
     if power_resource["amount"] < 100:
         msg_power(get_message("charge", "not_enough_power"), turns_elapsed, tone="error")
-        return valid_command, task_package
+        return False, task_package
 
     charge_targets = parse_command_targets(qualifier, task_type, task_package)
 
     if charge_targets == ui_runtime.GUI_PENDING:
-        return valid_command, task_package
+        return False, task_package
 
     if charge_targets is None:
-        return valid_command, task_package
+        return False, task_package
 
-    duration = CHARGE_DURATION
-    threshold = LOW_CHARGE_FLAG * IDLE_CHARGE_USAGE
+    outcome, task_package = process_charge_targets(charge_targets, qualifier, task_package)
 
-    for name in charge_targets:
-        if name in droids:
-            droid = droids[name]
-            charge_level = droid["charge"]
-            first_charge = droid.get("first_charge", False)
-
-            # Skip if already queued / busy
-            if not is_idle(name, humans, droids):
-                valid_command = True
-                humans, droids = add_to_queue(name, humans, droids, turns_elapsed, task_type)
-                task_package["humans"] = humans
-                task_package["droids"] = droids
-                continue
-
-            if isinstance(qualifier, str) and "low" in qualifier and charge_level > threshold:
-                msg_power(get_message("charge", "charge_above_low", target=name), turns_elapsed)
-                continue
-
-            if charge_level >= 800:
-                msg_power(get_message("charge", "charge_full", droid_name=name), turns_elapsed)
-                continue
-
-            # Handle zero-charge towing case
-            if charge_level == 0 and not first_charge:
-                idle_humans = [h for h in humans if is_idle(h, humans, droids)]
-
-                if not idle_humans:
-                    msg_power(get_message("charge", "droid_needs_towing", droid=name), turns_elapsed, tone="warn")
-                    continue
-
-                if ui_runtime.UI_MODE == "gui" and ui_runtime.ACTIVE_UI is not None:
-                    ui_runtime.ACTIVE_UI.set_pending_question(
-                        callback=resume_tow_command,
-                        context={
-                            "task_package": task_package,
-                            "charge_targets": charge_targets,
-                            "droid_needing_tow": name
-                        }
-                    )
-
-                answer = get_input("input", "tow_droid", turns_elapsed, name=name, humans_to_tow=idle_humans)
-
-                if answer and answer == ui_runtime.GUI_PENDING:
-                    return valid_command, task_package
-
-                # CLI/immediate path
-                task_package = resume_tow_command(answer, {
-                    "task_package": task_package,
-                    "charge_targets": charge_targets,
-                    "droid_needing_tow": name
-                })
-                return True, task_package
-
-            # Normal charge
-            valid_command = True
-            return_msg, task_package = create_task(name, task_type, duration, task_package)
-            msg_power(return_msg, turns_elapsed)
-
-        elif name in humans:
-            pronouns = get_pronouns(name, is_human=True)
-            msg_power(
-                get_message("charge", "wrong_target", target=name, pronoun=pronouns["p1"].lower()),
-                turns_elapsed,
-                tone="error"
-            )
-
-        else:
-            msg_power(get_message("charge", "no_target"), turns_elapsed, tone="error")
-
-    return valid_command, task_package
+    # Preserve the existing public contract for charging.
+    return outcome == TaskStartOutcome.STARTED, task_package
 
 
-def resume_tow_command(answer, context):
-    task_package = context["task_package"]
-    charge_targets = context["charge_targets"]
-    droid_needing_tow = context["droid_needing_tow"]
+def process_charge_targets(charge_targets, qualifier, task_package):
     humans = task_package["humans"]
     droids = task_package["droids"]
     turns_elapsed = task_package["counters"]["turns"]
 
-    task_type = TASK_TOWING_DROID
-    duration = TOW_TASK_LENGTH
+    threshold = LOW_CHARGE_FLAG * IDLE_CHARGE_USAGE
+    started_anything = False
 
-    # First, assign the selected human to tow the droid that needed help
-    okay_to_act, is_human, human_to_tow = can_character_act(answer, task_type, humans, droids, turns_elapsed)
-    if not okay_to_act:
-        return None
+    qualifier_text = str(qualifier).strip()
+    broad_qualifiers = ("low", "idle", "all")
 
-    if human_to_tow:
-        task_package["item"] = droid_needing_tow
-        return_msg, task_package = create_task(human_to_tow, task_type, duration, task_package)
-        msg_power(return_msg, turns_elapsed)
+    explicit_target = qualifier_text.casefold() not in broad_qualifiers
 
-    # Now continue processing the remaining charge targets
-    for name in charge_targets:
+    for index, name in enumerate(charge_targets):
+        
+        droid = droids.get(name)
+        if explicit_target:
+            droid["tow_declined"] = False
+
+        if name in humans:
+            pronouns = get_pronouns(name, is_human=True)
+
+            msg_power(get_message("charge", "wrong_target", target=name, pronoun=pronouns["p1"].lower()), turns_elapsed, tone="error")
+            continue
+
         if name not in droids:
+            msg_power(get_message("charge", "no_target", name=name), turns_elapsed, tone="error")
             continue
 
         droid = droids[name]
         charge_level = droid["charge"]
-        first_charge = droid.get("first_charge", False)
 
-        # If already being charged or towed, skip
-        if is_droid_being_charged_or_towed(name):
-            continue
-
-        # Another zero-charge droid needing tow
-        if charge_level == 0 and not first_charge:
-            idle_humans = [h for h in humans if is_idle(h, humans, droids)]
-
-            if not idle_humans:
-                msg_power(get_message("charge", "droid_needs_towing", droid=name), turns_elapsed, tone="warn")
+        # A stranded droid must be retrieved before a charge task can begin.
+        # This check must occur before the normal "busy / queue it" check.     
+        if droid.get("needs_tow", False):
+            # The player previously declined an automatic rescue.
+            # Only an explicit "charge <name>" command should clear this flag.
+            if droid.get("tow_declined", False):
                 continue
 
-            if ui_runtime.UI_MODE == "gui" and ui_runtime.ACTIVE_UI is not None:
-                ui_runtime.ACTIVE_UI.set_pending_question(
-                    callback=resume_tow_command,
-                    context={
-                        "task_package": task_package,
-                        "charge_targets": charge_targets,
-                        "droid_needing_tow": name
-                    }
-                )
+            if is_droid_being_charged_or_towed(name, task_package):
+                started_anything = True
+                continue
 
-            answer = get_input("input", "tow_droid", turns_elapsed, name=name, humans_to_tow=idle_humans)
+            idle_humans = [
+                human_name
+                for human_name in humans
+                if is_idle(human_name, humans, droids)
+            ]
 
-            if answer and answer == ui_runtime.GUI_PENDING:
-                return None
+            if not idle_humans:
+                msg_power(get_message("charge", "droid_needs_towing", name=name), turns_elapsed, tone="warn")
+                continue
 
-            return resume_tow_command(answer, {
-                "task_package": task_package,
-                "charge_targets": charge_targets,
-                "droid_needing_tow": name
-            })
+            remaining_charge_targets = charge_targets[index + 1:]
 
-        # Normal charge case
-        if is_idle(name, humans, droids) and charge_level < 800:
-            return_msg, task_package = create_task(name, TASK_CHARGING, CHARGE_DURATION, task_package)
-            msg_power(return_msg, turns_elapsed)
+            return offer_tow_for_stranded_droid(name, idle_humans, remaining_charge_targets, qualifier, task_package)
+
+        # Set the task_data
+        power_required = get_power_required_for_full_charge(droid)
+        task_data = {
+            "reserved_power": power_required,
+            "starting_charge": droid["charge"],
+            "target_charge": FULL_DROID_CHARGE
+        }
+
+        # Ordinary busy droids can receive a charge order in their queue.
+        if not is_idle(name, humans, droids):
+            humans, droids = add_to_queue(name, humans, droids, turns_elapsed, TASK_CHARGING, task_data=task_data)
+
+            task_package["humans"] = humans
+            task_package["droids"] = droids
+            started_anything = True
+            continue
+
+        if (isinstance(qualifier, str)
+            and "low" in qualifier
+            and charge_level > threshold):
+            msg_power(get_message("charge", "charge_above_low", target=name), turns_elapsed)
+            continue
+
+        # Don't charge if they are above 80% of full charge
+        if charge_level >= 0.8*FULL_DROID_CHARGE:
+            msg_power(get_message("charge", "charge_full", droid_name=name), turns_elapsed)
+            continue
+
+        return_msg, task_package = create_task(name, TASK_CHARGING, CHARGE_DURATION, task_package, task_data=task_data)
+
+        outcome, return_msg, task_package = try_start_charge_task(name, task_package)
+
+        if return_msg:
+            tone = ("warn" if outcome != TaskStartOutcome.STARTED else None)
+            msg_power(return_msg, turns_elapsed, tone=tone)
+
+        if outcome == TaskStartOutcome.STARTED:
+            started_anything = True
+
+    if started_anything:
+        return TaskStartOutcome.STARTED, task_package
+
+    return TaskStartOutcome.INVALID, task_package
+
+
+def offer_tow_for_stranded_droid(droid_name, idle_humans, remaining_charge_targets, qualifier, task_package):
+    turns_elapsed = task_package["counters"]["turns"]
+
+    context = {
+        "task_package": task_package,
+        "droid_needing_tow": droid_name,
+        "remaining_charge_targets": remaining_charge_targets,
+        "qualifier": qualifier,
+    }
+
+    if ui_runtime.UI_MODE == "gui" and ui_runtime.ACTIVE_UI is not None:
+        ui_runtime.ACTIVE_UI.set_pending_question(
+            callback=resume_tow_command,
+            context=context,
+            humans_to_tow=idle_humans
+        )
+
+    answer = get_input("input", "tow_droid", turns_elapsed, name=droid_name, humans_to_tow=idle_humans)
+
+    if answer == ui_runtime.GUI_PENDING:
+        return TaskStartOutcome.AWAITING_INPUT, task_package
+
+    # CLI / immediate path.
+    return continue_tow_command(answer, context)
+
+
+def resume_tow_command(answer, context):
+    outcome, task_package = continue_tow_command(answer, context)
+
+    # Another GUI question has opened. Do not resume turn processing yet.
+    if outcome == TaskStartOutcome.AWAITING_INPUT:
+        return None
+
+    # Invalid human selection or cancelled action: do not dock a turn.
+    if outcome == TaskStartOutcome.INVALID:
+        return None
 
     return task_package
+
+
+def continue_tow_command(answer, context):
+    task_package = context["task_package"]
+    droid_needing_tow = context["droid_needing_tow"]
+    human_to_tow = answer
+    remaining_charge_targets = context["remaining_charge_targets"]
+    qualifier = context["qualifier"]
+    turns_elapsed = task_package["counters"]["turns"]
+
+    # Continue with the towing process
+    okay_to_act, task_package = can_character_act(human_to_tow, TASK_TOWING_DROID, task_package)
+    if not okay_to_act:
+        return TaskStartOutcome.INVALID, task_package
+
+    # Safety check: do not begin a duplicate tow task.
+    if is_droid_being_charged_or_towed(droid_needing_tow, task_package):
+        return TaskStartOutcome.INVALID, task_package
+
+    # The towing task belongs to the human.
+    # The droid being recovered is stored with the task so completion can
+    # clear needs_tow and immediately begin charging.
+    task_data = {
+        "droid_to_tow": droid_needing_tow,
+        "charge_after_tow": True,
+    }
+
+    return_msg, task_package = create_task(human_to_tow, TASK_TOWING_DROID, TOW_TASK_LENGTH, task_package, task_data=task_data)
+
+    task_package["item"] = ""
+    task_package["task_data"] = {}
+
+    msg_power(return_msg, turns_elapsed)
+
+    # Carry on with other targets in a broad command such as "charge low".
+    # The towing task itself already counts as a successful action.
+    if remaining_charge_targets:
+        follow_up_outcome, task_package = process_charge_targets(remaining_charge_targets, qualifier, task_package)
+
+        if follow_up_outcome == TaskStartOutcome.AWAITING_INPUT:
+            return TaskStartOutcome.AWAITING_INPUT, task_package
+
+    return TaskStartOutcome.STARTED, task_package
 
 
 def initiate_explore_task(qualifier, task_package):
@@ -421,6 +519,7 @@ def initiate_explore_task(qualifier, task_package):
     turns_elapsed = task_package["counters"]["turns"]
     task_type = TASK_EXPLORING
     valid_command = False
+    is_human = qualifier in humans
 
     explore_targets = parse_command_targets(qualifier, task_type, task_package)
 
@@ -430,8 +529,8 @@ def initiate_explore_task(qualifier, task_package):
     if explore_targets is None:
         return valid_command, task_package
 
-    for raw_target in explore_targets:
-        okay_to_act, is_human, name = can_character_act(raw_target, task_type, humans, droids, turns_elapsed)
+    for name in explore_targets:
+        okay_to_act, task_package = can_character_act(name, TASK_EXPLORING, task_package)
         if not okay_to_act:
             continue
 
@@ -454,55 +553,62 @@ def initiate_explore_task(qualifier, task_package):
     return valid_command, task_package
 
 
-def initiate_plant_task(qualifier, task_package):
-    # Plant some real goddamn food
-    task_data = task_package["task_data"]
+def initiate_plant_task(qualifier, task_package, task_data=None):
+    # plant some real food! (or whatever the player has chosen to plant)
+    if task_data is None:
+        task_data = {}
     queued_task = False
     valid_command = False
 
-    if not task_data:   # Initial task, not queued task
-        answer = determine_what_to_plant_and_where(qualifier, task_package)
-        if not answer:
-            return valid_command, task_package
+    is_queued_plant_task = (
+        task_data.get("worker", "").casefold() == str(qualifier).casefold()
+        and bool(task_data.get("orders"))
+    )
 
-    else:
+    if is_queued_plant_task:
         crop_instructions = task_data
         name = qualifier
         queued_task = True
         valid_command = True
 
-    # Update task_package
-    task_package["task_data"] = task_data
+    else:
+        answer = determine_what_to_plant_and_where(qualifier, task_package)
+        if not answer:
+            return valid_command, task_package
 
-    return finish_initiate_plant_task(name=name, crop_instructions=crop_instructions, task_package=task_package, queued_task=queued_task )
+        crop_instructions = answer
+        name = qualifier
+
+    return finish_initiate_plant_task(name=name, crop_instructions=crop_instructions, task_package=task_package, queued_task=queued_task)
 
 
-def initiate_examine_task(qualifier, task_package):
+def initiate_examine_task(qualifier, task_package, item_name=""):
     # Examine something - or just glance at it
     humans = task_package["humans"]
     droids = task_package["droids"]
     resources = task_package["resources"]
     turns_elapsed = task_package["counters"]["turns"]
 
-    item_name = task_package.get("item", "")
     raw_examiner = qualifier
     task_type = TASK_EXAMINING
     valid_command = False
     awaiting_input = False
 
     # Get the examiner
-    name = parse_command_targets(raw_examiner, task_type, task_package)
+    name_list = parse_command_targets(raw_examiner, task_type, task_package)
 
-    if name == ui_runtime.GUI_PENDING:
+    if name_list == ui_runtime.GUI_PENDING:
         return valid_command, task_package
 
-    if not name:
+    if not name_list:
         return valid_command, task_package
+    name = name_list[0]
 
     # Check whether the character can act
-    okay_to_act, is_human, name = can_character_act(raw_examiner, task_type, humans, droids, turns_elapsed)
+    okay_to_act, task_package = can_character_act(name, TASK_EXAMINING, task_package)
     if not okay_to_act:
         return valid_command, task_package
+    is_human = name in humans
 
     # No item supplied, so ask the player to choose one
     if not item_name:
@@ -517,13 +623,10 @@ def initiate_examine_task(qualifier, task_package):
             msg_resource(get_message("examine", "nothing_examinable"), turns_elapsed)
             return valid_command, task_package
 
-        awaiting_input, task_package = get_examinable_item(task_package, examinable_items, name, is_human)
+        awaiting_input, item_name, task_package = get_examinable_item(task_package, examinable_items, name, is_human)
         if awaiting_input:
             return valid_command, task_package
-
-        # get_examinable_item() may have placed the selected item here
-        item_name = task_package.get("item", "")
-
+        
         if not item_name:
             msg_error(get_message("examine", "no_item_name"), turns_elapsed)
             return valid_command, task_package
@@ -538,9 +641,6 @@ def initiate_examine_task(qualifier, task_package):
     if not item:
         msg_resource(get_message("examine", "not_found", item=item_name), turns_elapsed)
         return valid_command, task_package
-
-    # Ensure the chosen/queued item is carried into task creation
-    task_package["item"] = item_name
 
     # Busy character: queue the examination
     if not is_idle(name, humans, droids):
@@ -570,7 +670,7 @@ def initiate_examine_task(qualifier, task_package):
     valid_command = True
 
     # Create the examination task
-    return_msg, task_package = create_task(name, task_type, duration, task_package)
+    return_msg, task_package = create_task(name, task_type, duration, task_package, item=item_name)
     msg_resource(return_msg, turns_elapsed)
 
     return valid_command, task_package
@@ -585,16 +685,20 @@ def initiate_reap_task(raw_target, task_package):
     task_type = TASK_REAPING
     valid_command = False
 
-    # Get targets (either from qualifier or prompt)
-    reap_target = parse_command_targets(raw_target, task_type, task_package)
-
-    if reap_target == ui_runtime.GUI_PENDING:
+    # Get target, either from qualifier or prompt
+    reap_targets = parse_command_targets(raw_target, task_type, task_package)
+    if reap_targets == ui_runtime.GUI_PENDING:
         return valid_command, task_package
 
-    if not reap_target:
+    if not reap_targets:
         return valid_command, task_package
 
-    okay_to_act, is_human, name = can_character_act(raw_target, task_type, humans, droids, turns_elapsed)
+    # Reaping currently uses one worker.
+    name = reap_targets[0]
+    is_human = name in humans
+
+    # Check if they can act
+    okay_to_act, task_package = can_character_act(name, TASK_REAPING, task_package)
     if not okay_to_act:
         return valid_command, task_package
         
@@ -629,7 +733,6 @@ def initiate_mine_task(qualifier, task_package):
     humans = task_package["humans"]
     droids = task_package["droids"]
     resources = task_package["resources"]
-    tasks = task_package["tasks"]
     turns_elapsed = task_package["counters"]["turns"]
     task_type = TASK_MINING
     valid_command = False
@@ -642,10 +745,11 @@ def initiate_mine_task(qualifier, task_package):
     if mine_targets == None:
         return valid_command, task_package
 
-    for raw_target in mine_targets:
-        okay_to_act, is_human, name = can_character_act(raw_target, task_type, humans, droids, turns_elapsed)
+    for name in mine_targets:
+        is_human = name in humans
+        okay_to_act, task_package = can_character_act(name, TASK_MINING, task_package)
         if not okay_to_act:
-            continue  # Skip invalid or busy characters
+            continue  # Skip invalid characters
 
         # Initialise PowerSupply CrystalStore if not already done
         for r in resources:
@@ -674,7 +778,7 @@ def initiate_mine_task(qualifier, task_package):
     return valid_command, task_package
 
 
-def initiate_refuel_task(raw_target, task_package):
+def initiate_refuel_task(raw_target, task_package, task_data=None):
     # Refuel the all-important power supply.
     humans = task_package["humans"]
     droids = task_package["droids"]
@@ -683,6 +787,29 @@ def initiate_refuel_task(raw_target, task_package):
     task_type = TASK_REFUELING
     valid_command = False
 
+    # If task_data is provided, we are resuming a queued refuel task,
+    # otherwise we are initiating a new refuel task.
+    if task_data is not None and task_data != {}:
+        # If task_data is provided, we are resuming a queued refuel task.
+        total_power = task_data.get("total_power", 0)
+        context = {
+            "name": task_data.get("name", ""),
+            "is_human": task_data.get("is_human", False),
+            "task_package": task_package,
+            "red": task_data.get("red", 0),
+            "indigo": task_data.get("indigo", 0),
+            "gold": task_data.get("gold", 0),
+            "total_power": total_power,
+            "num_days": get_refuel_days(total_power),
+            "selection_mode": task_data.get("selection_mode", "all"),
+        }
+        task_package = finish_initiate_refuel_task(context)
+        valid_command = True
+        return valid_command, task_package
+    
+    elif task_data is None:
+        task_data = {}
+
     refuel_target = parse_command_targets(raw_target, task_type, task_package)
 
     if refuel_target == ui_runtime.GUI_PENDING:
@@ -690,14 +817,14 @@ def initiate_refuel_task(raw_target, task_package):
 
     if not refuel_target:
         return valid_command, task_package
+    name = refuel_target[0]     # Only one target for refuelling
+    is_human = name in humans
 
-    okay_to_act, is_human, name = can_character_act(raw_target, task_type, humans, droids, turns_elapsed )
-
+    okay_to_act, task_package = can_character_act(name, TASK_REFUELING, task_package)
     if not okay_to_act:
         return valid_command, task_package
 
     power_supply = next((r for r in resources if r.get("name") == "PowerSupply"), None)
-
     if not power_supply or not power_supply.get("found", False):
         msg_power(get_message("refuel", "no_power_supply"), turns_elapsed, tone="warn" )
         return valid_command, task_package
@@ -723,7 +850,7 @@ def begin_refuel_vial_selection(context):
     task_package = context["task_package"]
     turns_elapsed = task_package["counters"]["turns"]
 
-    power_supply, vial_store, error_msg = get_refuel_power_supply_and_vials(name, task_package)
+    power_supply, vial_store, error_msg = get_refuel_power_supply_and_vials(name, task_package, require_vials=True)
 
     if error_msg:
         msg_power(error_msg, turns_elapsed, tone="warn")
@@ -773,7 +900,7 @@ def resume_refuel_use_all(answer, context):
         proceed = get_confirm(summary_msg, turns_elapsed=turns_elapsed, callback=resume_refuel_confirm_all, context=context)
 
         if proceed == ui_runtime.GUI_PENDING:
-            return False, task_package
+            return None   # We are awaiting input, so do not resume turn processing yet
 
         return resume_refuel_confirm_all("yes" if proceed else "no", context)
 
@@ -781,8 +908,6 @@ def resume_refuel_use_all(answer, context):
 
 
 def resume_refuel_confirm_all(answer, context):
-    task_package = context["task_package"]
-
     proceed = answer and str(answer).lower() in ("y", "yes", "true")
 
     if not proceed:
@@ -986,7 +1111,6 @@ def finish_initiate_refuel_task(context):
     turns_elapsed = task_package["counters"]["turns"]
 
     task_type = TASK_REFUELING
-    valid_command = True
 
     red = context.get("red", 0)
     indigo = context.get("indigo", 0)
@@ -995,15 +1119,17 @@ def finish_initiate_refuel_task(context):
     num_days = context.get("num_days", get_refuel_days(total_power))
 
     task_data = {
+        "name": name,
+        "is_human": is_human,
         "red": red,
         "indigo": indigo,
         "gold": gold,
         "total_power": total_power,
+        "num_days": num_days,
+        "selection_mode": context.get("selection_mode", "all"),
     }
 
-    task_package["task_data"] = task_data
-
-    if context.get("selection_mode") == "all":
+    if context.get("selection_mode", "") == "all":
         msg_power(
             f"{name} will now proceed to use all available vials to refuel the PowerSupply "
             f"and add an extra {total_power} units and {num_days} days' worth of droid charges.", turns_elapsed)
@@ -1015,31 +1141,29 @@ def finish_initiate_refuel_task(context):
 
     if not is_idle(name, humans, droids):
         humans, droids = add_to_queue(name, humans, droids, turns_elapsed, task_type, task_data=task_data)
-        return valid_command, task_package
+        return task_package
 
     key = "refuel_human" if is_human else "refuel_droid"
     duration = set_task_length(key)
 
-    return_msg, task_package = create_task(name, task_type, duration, task_package)
+    return_msg, task_package = create_task(name, task_type, duration, task_package, task_data=task_data, item_name="PowerSupply")
     msg_power(return_msg, turns_elapsed)
 
-    return valid_command, task_package
+    return task_package
 
 
-def handle_assign_command(raw_target, task_package):
+def handle_assign_command(raw_target, task_package, task_data=None, item_name=""):
     # Assign a character to something useful (hopefully)
-    humans = task_package["humans"]
-    droids = task_package["droids"]
     resources = task_package["resources"]
     turns_elapsed = task_package["counters"]["turns"]
-    item_name = task_package["item"]
     task_type = TASK_ASSIGNED
     valid_command = False
-    
-    if item_name == "":
-        # Find discovered assignable items
-        discovered_items = [item["name"] for item in resources if item["name"] in ASSIGNABLE_ITEMS]
-    
+    if task_data is None:
+        task_data = {}
+
+    # Find discovered assignable items
+    discovered_items = [item["name"] for item in resources if item["name"] in ASSIGNABLE_ITEMS]
+    if not task_data:       # i.e. not a queued assign
         if not discovered_items:
             msg_info(get_message("assign", "nothing_assignable"), turns_elapsed)
             return valid_command, task_package
@@ -1051,137 +1175,200 @@ def handle_assign_command(raw_target, task_package):
 
     if not assign_target:
         return valid_command, task_package
-    
-    okay_to_act, is_human, name = can_character_act(raw_target, task_type, humans, droids, turns_elapsed)
+    name = assign_target[0]
+
+    okay_to_act, task_package = can_character_act(name, TASK_ASSIGNED, task_package)
     if not okay_to_act:
         return valid_command, task_package
 
-    if item_name == "":
-        # If not accepted to assign, just return
-        accepted, task_package = get_new_assignee(discovered_items, name, task_package)
-        if not accepted:
-            return valid_command, task_package
+    # This call handles both the queued and manual assign tasks
+    outcome, task_package = get_new_assignee(discovered_items, name, task_package, task_data=task_data, item_name=item_name)
 
-    return valid_command, task_package
+    return outcome, task_package
 
 
-def get_new_assignee(discovered_items, target, task_package):
+def get_new_assignee(discovered_items, target, task_package, task_data=None, item_name=""):
     humans = task_package["humans"]
     droids = task_package["droids"]
     turns_elapsed = task_package["counters"]["turns"]
-
-    accepted = False
-    item_name = ""
-    current_assignee = ""
+    if task_data is None:
+        task_data = {}
 
     menu = []
     assignees = {}
-    for i, item in enumerate(discovered_items):
+
+    # If this was a queued task, we'll have task_data
+    if task_data:
+        item_name = task_data.get("item_name", "")
+
+    # Build the assignment menu and record any current assignee for each item.
+    for index, item in enumerate(discovered_items, start=1):
         assigned = None
-        for h in humans:
-            if humans[h].get("task") == TASK_ASSIGNED:
-                if humans[h].get("item") == item:
-                    assigned = h
+
+        for human_name in humans:
+            if (humans[human_name].get("task") == TASK_ASSIGNED and humans[human_name].get("item") == item):
+                assigned = human_name
+                break
+
+        if assigned is None:
+            for droid_name in droids:
+                if (droids[droid_name].get("task") == TASK_ASSIGNED and droids[droid_name].get("item") == item):
+                    assigned = droid_name
                     break
-        if not assigned:
-            for d in droids:
-                if droids[d].get("task") == TASK_ASSIGNED:
-                    if droids[d].get("item") == item:
-                        assigned = d
-                        break
+
         assignees[item] = assigned
-        label = f"{i+1}. {item}"
+
+        label = f"{index}. {item}"
         if assigned:
             label += f" (currently assigned: {assigned})"
+
         menu.append(label)
 
-    # Add abort option
+    # Queued task path:
+    # The queued task already knows which item is being assigned.
+    if item_name:
+        if item_name not in assignees:
+            msg_error(get_message("assign", "invalid_choice"), turns_elapsed)
+            return TaskStartOutcome.INVALID, task_package
+
+        current_assignee = assignees[item_name]
+
+        awaiting_input, task_package = begin_assignment_for_item(target, item_name, current_assignee, task_package, task_data=task_data.copy())
+
+        if awaiting_input:
+            return TaskStartOutcome.AWAITING_INPUT, task_package
+
+        return TaskStartOutcome.STARTED, task_package
+
+    # Manual assignment path:
+    # No item has been supplied, so ask the player to choose one.
     menu.append("0. Cancel assignment")
+
+    context = {
+        "task_package": task_package,
+        "discovered_items": discovered_items,
+        "target": target,
+        "assignees": assignees,
+    }
 
     if ui_runtime.UI_MODE == "gui" and ui_runtime.ACTIVE_UI is not None:
         ui_runtime.ACTIVE_UI.set_pending_question(
             callback=resume_get_new_assignee,
-            context={
-                "task_package": task_package,
-                "discovered_items": discovered_items,
-                "target": target,
-                "assignees": assignees
-            }
+            context=context
         )
 
     answer = get_input("input", "assigned_item", turns_elapsed, name=target, full_list=menu)
 
-    if answer and answer == ui_runtime.GUI_PENDING:
-        return accepted, task_package
-    
+    if answer == ui_runtime.GUI_PENDING:
+        return TaskStartOutcome.AWAITING_INPUT, task_package
+
+    # CLI compatibility:
+    # The resumed function will need to return the same Enum contract.
+    outcome, task_package = resume_get_new_assignee(answer, context)
+
+    return outcome, task_package
+
 
 def resume_get_new_assignee(choice, context):
     task_package = context["task_package"]
     discovered_items = context["discovered_items"]
     target = context["target"]
     assignees = context["assignees"]
-    humans = task_package["humans"]
-    droids = task_package["droids"]
     turns_elapsed = task_package["counters"]["turns"]
-    
+
+    choice = choice.strip()
+
     if not choice.isdigit():
-        msg_error(get_message("assign", "invalid_choice"), turns_elapsed)
-        accepted = False
-        return "", "", accepted
+        msg_error(get_message("assign", "invalid_choice"),turns_elapsed)
+        return task_package
 
     choice = int(choice)
+
     if choice == 0:
-        msg_info(get_message("assign", "assignment_aborted"), turns_elapsed)
-        accepted = False
-    elif 1 <= choice <= len(discovered_items):
-        item_name = discovered_items[choice - 1]
-        current_assignee = assignees[item_name]
-        accepted = True
-    else:
+        msg_info(get_message("assign", "assignment_aborted", target=target), turns_elapsed)
+        return task_package
+
+    if not 1 <= choice <= len(discovered_items):
         msg_error(get_message("assign", "invalid_choice"), turns_elapsed)
-        accepted = False
+        return task_package
 
-    # ---- Begin assignment ----
-    task_created = False
+    item_name = discovered_items[choice - 1]
+    current_assignee = assignees[item_name]
 
-    if item_name == "CrystalProcessor":
-        valid_command, task_package = initiate_assign_process_task(target, task_package)
-        if not valid_command:   # This will be because the GUI needs to respond
-            return None
-    elif item_name == "ShieldManual":
-        valid_command, task_package = initiate_assign_shieldmanual_task(target, task_package)
-        if not valid_command:   # This will be because the GUI needs to respond
-            return None
-    elif item_name == "OldTerminal":
-        msg_shield(get_message("assign", "old_terminal_assigned", name=target), turns_elapsed)
-        valid_command, task_package = enter_oldterminal_commands(target, current_assignee, task_package)
-        if not valid_command:   # This will be because the GUI needs to respond
-            return None
-        else:           # Instant assignment: no task created, but we set this for the section below
-            task_created = True
-    elif item_name == "CloakingShield":
-        task_created = True
-        valid_command, task_package = check_shield_assign(target, task_package)
-        if not valid_command:   # This will be because the GUI needs to respond
-            return None
+    awaiting_input, task_package = begin_assignment_for_item(target, item_name, current_assignee, task_package)
 
-    if task_created:
-        # Unassign previous assignee, if any
-        if current_assignee and current_assignee != target:   # i.e. not a reassign
-            humans, droids = clear_task_for_character(current_assignee, item_name, humans, droids)
-            msg_info(get_message("assign", "reassigned", item=item_name, old=current_assignee, new=target), turns_elapsed)
+    if awaiting_input:
+        return None
 
     return task_package
 
 
-def initiate_assign_process_task(name, task_package):
-    # Assign a human or droid to process selected crystals using the CrystalProcessor.
+def begin_assignment_for_item(target, item_name, current_assignee, task_package, task_data=None):
+    #Begin assignment for a known item.
     humans = task_package["humans"]
     droids = task_package["droids"]
+    turns_elapsed = task_package["counters"]["turns"]
+
+    task_created = False
+
+    if item_name == "CrystalProcessor":
+        valid_command, task_package = initiate_assign_process_task(target, task_package, task_data=task_data)
+        if not valid_command:
+            return True, task_package
+        task_created = True
+
+    elif item_name == "ShieldManual":
+        valid_command, task_package = initiate_assign_shieldmanual_task(target, task_package)
+        if not valid_command:
+            return True, task_package
+        task_created = True
+
+    elif item_name == "OldTerminal":
+        msg_shield(get_message("assign", "old_terminal_assigned", name=target), turns_elapsed)
+        valid_command, task_package = enter_oldterminal_commands(target, current_assignee, task_package)
+        if not valid_command:
+            return True, task_package
+        task_created = True
+
+    elif item_name == "CloakingShield":
+        valid_command, task_package = check_shield_assign(target, task_package)
+        if not valid_command:
+            return True, task_package
+        task_created = True
+
+    else:
+        msg_error(get_message("assign", "invalid_choice"), turns_elapsed)
+        return False, task_package
+
+    if task_created:
+        if current_assignee and current_assignee != target:
+            humans, droids = clear_task_for_character(current_assignee, item_name, humans, droids)
+
+            msg_info(get_message("assign", "reassigned", item=item_name, old=current_assignee, new=target), turns_elapsed)
+
+    return False, task_package    
+
+
+def initiate_assign_process_task(name, task_package, task_data=None):
+    # Assign a human or droid to process selected crystals using the CrystalProcessor.
     resources = task_package["resources"]
     turns_elapsed = task_package["counters"]["turns"]
     item_name = "CrystalProcessor"
     valid_command = False
+    if task_data is None:
+        task_data = {}
+
+    # Queued assign - the selection work has already been done
+    if task_data:
+        context = {
+            "task_package": task_package,
+            "name": name,
+        }
+        task_package = finish_assign_process_task(context, task_data=task_data)
+        valid_command = True
+        return valid_command, task_package
+
+    # Else, continue with the initiation process
 
     # Find the PowerSupply and ensure it has CrystalStore
     power_supply = next((r for r in resources if r.get("name") == "PowerSupply"), None)
@@ -1318,9 +1505,11 @@ def resume_assign_process_gold(answer, context):
     return finish_assign_process_task(context)
 
 
-def finish_assign_process_task(context):
+def finish_assign_process_task(context, task_data=None):
     name = context["name"]
     task_package = context["task_package"]
+    if task_data is None:
+        task_data = {}
 
     humans = task_package["humans"]
     droids = task_package["droids"]
@@ -1328,53 +1517,52 @@ def finish_assign_process_task(context):
 
     task_type = TASK_ASSIGNED
     item_name = "CrystalProcessor"
-    valid_command = False
-
-    red = context.get("red", 0)
-    indigo = context.get("indigo", 0)
-    gold = context.get("gold", 0)
-
-    if red == 0 and indigo == 0 and gold == 0:
-        msg_crystal("No crystals selected for processing. Task cancelled.", turns_elapsed)
-        return task_package
-
-    total_power = red * POWER_PER_RED + indigo * POWER_PER_INDIGO + gold * POWER_PER_GOLD
-    full_charge_all = NUM_DROIDS * FULL_CHARGE
-    days_per_full_charge = FULL_CHARGE / (10 * IDLE_CHARGE_USAGE)
-
-    if full_charge_all > total_power:
-        num_days = 1
-        num_droids = total_power // (10 * IDLE_CHARGE_USAGE)
-
-    else:
-        num_days = total_power // (full_charge_all / days_per_full_charge)
-        num_droids = NUM_DROIDS
-
-    msg_crystal(get_message("assign", "CP_estimate", target=name, total_power=total_power, num=num_droids, day=num_days), turns_elapsed)
-
-    # Determine duration and create task
     is_human = name in humans
+    red = indigo = gold = 0
     duration = set_task_length("assign_human_process") if is_human else set_task_length("assign_droid_process")
 
-    task_data = {
-        "process_red": red,
-        "process_indigo": indigo,
-        "process_gold": gold
-    }
+    # If this is not a queued task (task_data={}) then finalise everything
+    if not task_data:
+        red = context.get("red", 0)
+        indigo = context.get("indigo", 0)
+        gold = context.get("gold", 0)
 
-    # If they are not idle, add this action to their queue
-    if not is_idle(name, humans, droids):
-        valid_command = True
-        humans, droids = add_to_queue(name, humans, droids, turns_elapsed, task_type, item=item_name, task_data=task_data )
-        return task_package
+        if red == 0 and indigo == 0 and gold == 0:
+            msg_crystal("No crystals selected for processing. Task cancelled.", turns_elapsed)
+            return task_package
 
-    valid_command = True
+        total_power = red * POWER_PER_RED + indigo * POWER_PER_INDIGO + gold * POWER_PER_GOLD
+        FULL_DROID_CHARGE_all = NUM_DROIDS * FULL_DROID_CHARGE
+        days_per_FULL_DROID_CHARGE = FULL_DROID_CHARGE / (10 * IDLE_CHARGE_USAGE)
 
-    task_package["item"] = item_name
-    task_package["task_data"] = task_data
+        if FULL_DROID_CHARGE_all > total_power:
+            num_days = 1
+            num_droids = total_power // (10 * IDLE_CHARGE_USAGE)
+
+        else:
+            num_days = total_power // (FULL_DROID_CHARGE_all / days_per_FULL_DROID_CHARGE)
+            num_droids = NUM_DROIDS
+
+        msg_crystal(get_message("assign", "CP_estimate", target=name, total_power=total_power, num=num_droids, day=num_days), turns_elapsed)
+
+        # Put the task on the queue, or create it, whichever is appropriate
+        task_data = {
+            "item_name": item_name,
+            "process_red": red,
+            "process_indigo": indigo,
+            "process_gold": gold
+        }
+
+        # If they are not idle, add this action to their queue
+        if not is_idle(name, humans, droids):
+            humans, droids = add_to_queue(name, humans, droids, turns_elapsed, task_type, item=item_name, task_data=task_data)
+            return task_package
+
+        task_package["item"] = item_name
+        task_package["task_data"] = task_data
 
     # Create the task
-    return_msg, task_package = create_task(name, task_type, duration, task_package)
+    return_msg, task_package = create_task(name, task_type, duration, task_package, task_data=task_data, item_name=item_name)
     msg_crystal(return_msg, turns_elapsed)
 
     return task_package
@@ -1413,7 +1601,7 @@ def initiate_assign_shieldmanual_task(name, task_package):
         duration = set_task_length("assign_droid_manual")
 
     # Create the task
-    return_msg, task_package = create_task(name, task_type, duration, task_package)
+    return_msg, task_package = create_task(name, task_type, duration, task_package, item_name=item_name)
     msg_shield(return_msg, turns_elapsed)
     
     return valid_command, task_package
@@ -1425,6 +1613,7 @@ def check_shield_assign(name, task_package):
     droids = task_package["droids"]
     resources = task_package["resources"]
     turns_elapsed = task_package["counters"]["turns"]
+    shieldstate = task_package["shieldstate"]
     is_droid = name in droids
     task_type = TASK_ASSIGNED
     valid_command = False
@@ -1432,7 +1621,7 @@ def check_shield_assign(name, task_package):
     # If they are not idle, add this action to their queue
     if not is_idle(name, humans, droids):
         valid_command = True
-        humans, droids = add_to_queue(name, humans, droids, turns_elapsed, task_type)
+        humans, droids = add_to_queue(name, humans, droids, turns_elapsed, task_type, item="CloakingShield")
         return valid_command, task_package
 
     if is_droid or not shieldstate["manual_decoded"]: # Can allow anyone to be assigned to the shield IF the manual is NOT decoded, but only droids if it is
@@ -1442,9 +1631,11 @@ def check_shield_assign(name, task_package):
         ancient_code = next((r for r in resources if r["name"] == "AncientDroidCode"), None)
         if ancient_code:
             if ancient_code["droidName"] == name:
+                item_name = "CloakingShield"
+                set_task_status_for_character(name, task_type, item_name, humans, droids, task_package["counters"]["turns"])
                 valid_command = True
                 shieldstate = set_shield_state("C", droids, resources, shieldstate)
-                droids[name]["charge"] = FULL_CHARGE  # When they are connected they have full charge
+                droids[name]["charge"] = FULL_DROID_CHARGE  # When they are connected they have full charge
         else:
             msg_shield(get_message("shield", "code_not_found", name=name), turns_elapsed, tone="warn")
 
@@ -1516,6 +1707,7 @@ def resume_enter_old_terminal_commands(answer, context):
     current_assignee = context["current_assignee"]
     resources = task_package["resources"]
     droids = task_package["droids"]
+    humans = task_package["humans"]
     shieldstate = task_package["shieldstate"]
     turns_elapsed = task_package["counters"]["turns"]
     valid_command = False
@@ -1561,6 +1753,8 @@ def resume_enter_old_terminal_commands(answer, context):
     valid_command = True
     is_droid = name in droids
     if is_droid:    # Any droid can be assigned to the OldTerminal
+        task_type = TASK_ASSIGNED
+        set_task_status_for_character(name, task_type, item_name, humans, droids, task_package["counters"]["turns"])
         shieldstate = set_shield_state("E", droids, resources, shieldstate)
     else:
         # A human cannot be assigned, but they don't know this - although they will after THIS message!
@@ -1571,7 +1765,7 @@ def resume_enter_old_terminal_commands(answer, context):
         humans, droids = clear_task_for_character(current_assignee, item_name, humans, droids)
         msg_info(get_message("assign", "reassigned", item=item_name, old=current_assignee, new=name), turns_elapsed)
 
-    return valid_command, task_package
+    return task_package
 
 
 def get_examinable_item(task_package, examinable_items, target, is_human):
@@ -1622,7 +1816,7 @@ def get_examinable_item(task_package, examinable_items, target, is_human):
         awaiting_input = False
         msg_warn(get_message("error", "no_CLI"), turns_elapsed)
 
-    return awaiting_input, task_package
+    return awaiting_input, "", task_package
 
 
 def resume_examine_task(answer, context):
@@ -1655,7 +1849,7 @@ def resume_examine_task(answer, context):
         current_examiner = examinees[item_name]
 
     else:
-        msg_resource(get_message("examine", "invalid_choice"), turns_elapsed)
+        msg_resource(get_message("examine", "invalid_choice", response=answer), turns_elapsed)
         return task_package
 
     # Find the target item
@@ -1663,9 +1857,6 @@ def resume_examine_task(answer, context):
     if not item:
         msg_resource(get_message("examine", "not_found", item=item_name), turns_elapsed)
         return task_package
-    
-    # Put the item nam in task_package so that it is retrievable when the task is created
-    task_package["item"] = item_name
     
     # If they are not idle, add this action to their queue
     if not is_idle(name, humans, droids):
@@ -1696,7 +1887,7 @@ def resume_examine_task(answer, context):
         duration = item.get("examine_turns", 0) + set_task_length("examine_droid")
 
     # Create the task
-    return_msg, task_package = create_task(name, task_type, duration, task_package)
+    return_msg, task_package = create_task(name, task_type, duration, task_package, item=item_name)
     msg_resource(return_msg, turns_elapsed)
     
     # The question is now resolved, so the suspended turn may continue.

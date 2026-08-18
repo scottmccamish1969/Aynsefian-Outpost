@@ -40,6 +40,7 @@ def get_input(category, code, turns_elapsed=0, end=None, **kwargs):
             "feed": "Who do you want to feed? (<name(s)>, 'all', or 'hungry')",
             "list": "You can list the following items: {can_be_listed}. Which would you like? (Press enter to exit)",
             "mine": "Who should get out the pick and go mining? <name(s)>",
+            "no_food": "There is no food available to feed {name}. Should {pronoun1} wait for food to arrive (y) or continue {pronoun2} next task without eating (n)?",
             "oldterminal": "The OldTerminal accepts your access. Do you wish to use the known CrystalCombination to attempt shield calibration? (y/n)",
             "read": "What file are you interested in reading?  You can pick from: {files}",
             "read_next_lines": "Read next {lines} lines? (y/n):",
@@ -49,7 +50,7 @@ def get_input(category, code, turns_elapsed=0, end=None, **kwargs):
             "reset_confirm": "Are you absolutely, totally, completely sure you want to reset the outpost? (y/n)",
             "resume_examine": "{name} is still suggesting {pronoun1} should examine the **{item}**. Do you want {pronoun2} to? (y/n)",
             "tow_droid": "Which of these humans should be assigned to the task of towing poor {name} to the charging station? ({humans_to_tow})",
-            "zero_charge": "{droid} is at zero charge. Droids are urgently needed at this outpost. Do you want to take them to the charging station right now? (y/n)",
+            "zero_charge": "{droid} is at zero charge. Droids are urgently needed at this Outpost. Do you want {name} to take them to the charging station right now? (y/n)",
         },
         "plant": {
             "who_plants": "Let's plant some real food! Who are you giving the trowel and some seeds to? <name>",
@@ -82,6 +83,7 @@ def get_input(category, code, turns_elapsed=0, end=None, **kwargs):
             "feed": "Who do you want to feed? (<name(s)>, 'all', or 'hungry')",
             "list": "Which would item should be listed? (Press enter to exit)",
             "mine": "Who should get out the pick and go mining? <name(s)>",
+            "no_food": "Should {name} wait for food to arrive (y)?",
             "oldterminal": "Use the known CrystalCombination? (y/n)",
             "read": "What file are you interested in reading?",
             "read_next_lines": "Read next {lines} lines? (y/n):",
@@ -91,7 +93,7 @@ def get_input(category, code, turns_elapsed=0, end=None, **kwargs):
             "reset_confirm": "Confirm that you want to reset the outpost: (y/n)",
             "resume_examine": "Should {name} examine the **{item}**? (y/n)",
             "tow_droid": "Which human should towing {name} to the charging station? <name>",
-            "zero_charge": "Do you want to take {droid} to the charging station? (y/n)",
+            "zero_charge": "Do you want {name} to take {droid} to the charging station? (y/n)",
         },
         "plant": {
             "who_plants": "Who should do the planting? <name>",

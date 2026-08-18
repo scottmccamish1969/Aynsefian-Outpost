@@ -1,6 +1,6 @@
 # status.py
 
-from constants import (ENDGAME_REASONS, FULL_CHARGE, HUNGER, NUM_HUMANS, NUM_DROIDS, LOW_CHARGE_FLAG, IDLE_CHARGE_USAGE, COMMAND_MAP,
+from constants import (ENDGAME_REASONS, FULL_DROID_CHARGE, HUNGER, NUM_HUMANS, NUM_DROIDS, LOW_CHARGE_FLAG, IDLE_CHARGE_USAGE, COMMAND_MAP,
                       TASK_ASSIGNED, TASK_EXAMINING, TASK_EATING, TASK_CHARGING, TASK_REAPING, TASK_PLANTING, ONE_DAY_HUNGRY)
 import lore.user_interface as ui_runtime
 from lore.user_interface import (log_and_display, get_input, msg_food, msg_power, msg_info, msg_plant,
@@ -51,7 +51,7 @@ def get_droids_panel_text(task_package):
     droids = task_package.get("droids", {})
     lines = ["DROIDS"]
     for name, d in droids.items():
-        charge = int(d.get("charge", 0)//(FULL_CHARGE/100))
+        charge = int(d.get("charge", 0)//(FULL_DROID_CHARGE/100))
         task_and_queue = get_character_task_and_queue(name, task_package)
         lines.append(f"{name:<7} | Charge: {charge}% | {task_and_queue}")
     return "\n".join(lines)
@@ -369,7 +369,7 @@ def list_food(task_package):
         hunger = h.get("hunger", 0)
         if hunger >= HUNGER["Deceased"][0]:
             deceased.append(name)
-        elif hunger >= HUNGER["Near Death"][0]:
+        elif hunger >= HUNGER["NearDeath"][0]:
             near_death.append(name)
         elif hunger >= HUNGER["Starving"][0]:
             starving.append(name)
@@ -474,7 +474,7 @@ def list_power(task_package):
     turns_elapsed = task_package["counters"]["turns"]
 
     # List power status
-    FULL = FULL_CHARGE  # from constants.py
+    FULL = FULL_DROID_CHARGE  # from constants.py
 
     # --- Power Supply ---
     power = next((r for r in resources if r["name"] == "PowerSupply"), None)
@@ -498,7 +498,7 @@ def list_power(task_package):
     msg_power("\nDROID CHARGE LEVELS:", turns_elapsed)
 
     for name, data in droids.items():
-        charge = data.get("charge", 0)/(FULL_CHARGE/100)
+        charge = data.get("charge", 0)/(FULL_DROID_CHARGE/100)
         ratio = charge / 100 if FULL else 0
 
         if ratio >= 1.0:
@@ -615,7 +615,7 @@ def list_crystals(task_package):
     turns_elapsed = task_package["counters"]["turns"]
 
     # List power status
-    FULL = FULL_CHARGE  # from constants.py
+    FULL = FULL_DROID_CHARGE  # from constants.py
 
     # --- Power Supply ---
     power = next((r for r in resources if r["name"] == "PowerSupply"), None)

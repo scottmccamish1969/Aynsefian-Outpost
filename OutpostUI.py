@@ -254,39 +254,3 @@ def get_top_bar_data(task_package):
         "seeds": seeds,
         "crystals": crystals,
     }
-
-
-# Legacy function - keep for now but consider deleting. Has been replaced within status.py.
-def old_get_state_panel_text(task_package):
-    humans = task_package.get("humans", {})
-    droids = task_package.get("droids", {})
-    crops = task_package.get("crops", {})
-
-    lines = []
-
-    lines.append("HUMANS")
-    for name, h in humans.items():
-        state = h.get("state", "Unknown")
-        task = h.get("task", "--Idle--")
-        hunger = h.get("hunger", 0)
-        lines.append(f"{name:<7} | {task:<10} | {state} ({hunger})")
-
-    lines.append("")
-    lines.append("DROIDS")
-    for name, d in droids.items():
-        task = d.get("task", "--Idle--")
-        charge = d.get("charge", 0)
-        lines.append(f"{name:<7} | {task:<10} | {charge}")
-
-    lines.append("")
-    lines.append("CROPS")
-    if crops:
-        for _, crop in crops.items():
-            crop_type = crop.get("crop_type", "Unknown")
-            worker = crop.get("worker", "Unknown")
-            turns_remaining = crop.get("turns_remaining", 0)
-            lines.append(f"{crop_type.capitalize():<7} | {worker:<7} | {turns_remaining} turns")
-    else:
-        lines.append("-- No crops growing --")
-
-    return "\n".join(lines)
