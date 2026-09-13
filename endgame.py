@@ -2,7 +2,7 @@
 
 import random
 import sys
-from constants import ENDGAME_REASONS
+from constants import ENDGAME_REASONS, CommandOutcome
 from lore.lore_ingame import get_message, print_commands
 from lore.lore_story import get_story_message
 import lore.user_interface as ui_runtime
@@ -92,12 +92,13 @@ def handle_game_over_loop(task_package, end_msg=""):
                 context={
                     "task_package": task_package,
                     "reason_code": reason_code
-                }
+                },
+                resume_turn = False
             )
         answer = get_input("input", "endgame_choice", task_package["counters"]["turns"])
 
         if answer and answer == ui_runtime.GUI_PENDING:
-            return False, task_package  # Awaiting GUI input
+            return CommandOutcome.AWAITING_INPUT, task_package  # Awaiting GUI input
 
 
 def resume_game_over_loop(answer, context):
@@ -106,10 +107,10 @@ def resume_game_over_loop(answer, context):
     turns_elapsed = task_package["counters"]["turns"]
 
     if answer and answer.lower() in ("reset", "r"):
-        task_package = initialise_outpost(first_time=False)
-        if task_package:
+        outcome, task_package = initialise_outpost(first_time=False)
+        if outcome == CommandOutcome.SUCCESS:
             print_commands(turns_elapsed)
-        return task_package
+        return outcome, task_package
 
     if answer and answer.lower() in ("quit", "exit", "q"):
         if reason_code == "you_win?":
@@ -119,4 +120,4 @@ def resume_game_over_loop(answer, context):
         sys.exit(0)
 
     msg_story(get_story_message("endgame", "restart"), task_package["counters"]["turns"])
-    return task_package
+    return CommandOutcome.SUCCESS, task_package

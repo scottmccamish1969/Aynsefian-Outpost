@@ -5,7 +5,7 @@ from command_utils import get_task_by_worker, remove_task_by_id, create_task
 from constants import (RATION_PACKS, MAJOR_RESOURCES_ORDER, CHAIN_RESOURCES_ORDER, GATING_RULES, NORMAL_ITEM_RARITY, 
                        GATE_ITEM_RARITY, POST_CRITICAL_ITEM_RARITY, IDLE_CHARGE_USAGE, FULL_DROID_CHARGE, INITIAL_CHARGE, 
                        INITIAL_SEED_STASH, SEED_PACKETS_USED, NUM_DROIDS, LOW_CHARGE_FLAG, TASK_CHARGING, TASK_PLANTING, 
-                       TaskStartOutcome, CHARGE_DURATION)
+                       CommandOutcome, CHARGE_DURATION)
 from items import REPLACEMENT, JUNK, ITEM_DB, get_item_template
 from lore.lore_ingame import get_message
 from lore.user_interface import msg_power
@@ -391,29 +391,6 @@ def charge_droid(droid_name, droids, resources, turns_elapsed):
     return user_message, droids, resources
 
 
-def charge_droids_waiting_for_power(task_package):
-    droids = task_package["droids"]
-    humans = task_package["humans"]
-    from queuing import is_idle
-
-    for name, droid in droids.items():
-        if not droid.get("awaiting_power", False):
-            continue
-
-        if droid.get("power_wait_declined", False):
-            continue
-
-        if not is_idle(name, humans, droids):
-            continue
-
-        outcome, return_msg, task_package = try_start_charge_task(name, task_package)
-
-        if outcome == TaskStartOutcome.STARTED:
-            msg_power(return_msg, task_package["counters"]["turns"], stamp=False)
-
-    return task_package
-
-
 def decrease_droid_charge(task_package):
     droids =  task_package["droids"]
     humans =  task_package["humans"]
@@ -452,26 +429,24 @@ def get_power_required_for_full_charge(droid):
 def try_start_charge_task(name, task_package):
     droids = task_package["droids"]
     resources = task_package["resources"]
+    turns_elapsed = task_package["counters"]["turns"]
 
     droid = droids[name]
     power_resource = get_power_supply(resources)
 
     if not power_resource or not power_resource.get("found", False):
-        return TaskStartOutcome.INVALID, "", task_package
+        return CommandOutcome.CANNOT_EXECUTE, task_package
 
     power_required = get_power_required_for_full_charge(droid)
-
     if power_required == 0:
-        return TaskStartOutcome.INVALID, "", task_package
+        return CommandOutcome.CANNOT_EXECUTE, task_package
 
     available_power = power_resource["amount"]
-
     if available_power < power_required:
         droid["awaiting_power"] = True
-
-        return_msg = get_message("charge", "not_enough_power_for_charge", name=name, task=TASK_CHARGING, remaining_power=available_power, needed_power=power_required)
-        
-        return TaskStartOutcome.INVALID, return_msg, task_package
+        return_msg = get_message("charge", "not_enough_power_for_charge", name=name, task=TASK_CHARGING, remaining_power=available_power, needed_power=power_required) 
+        msg_power(return_msg, turns_elapsed)
+        return CommandOutcome.CANNOT_EXECUTE, task_package
 
     task_data = {
         "reserved_power": power_required,
@@ -483,11 +458,12 @@ def try_start_charge_task(name, task_package):
     power_resource["amount"] -= power_required
 
     return_msg, task_package = create_task(name, TASK_CHARGING, CHARGE_DURATION, task_package, task_data=task_data)
+    msg_power(return_msg, turns_elapsed)
 
     droid["awaiting_power"] = False
     droid["power_wait_declined"] = False
 
-    return TaskStartOutcome.STARTED, return_msg, task_package
+    return CommandOutcome.SUCCESS, task_package
 
 
 def interrupt_task_if_no_power(name, task_package):

@@ -1,5 +1,6 @@
 # main.py
 
+from constants import CommandOutcome
 from endgame import check_endgame, handle_game_over_loop
 from lore.lore_ingame import print_commands, get_message
 from lore.lore_story import get_story_message, msg_story
@@ -17,7 +18,6 @@ def main():
     import lore.user_interface as ui_runtime
     ui_runtime.UI_MODE = "gui"
     ui_runtime.ACTIVE_UI = ui
-    awaiting_input = False
 
     def command_callback(command):
         ui.append_log(f">> {command}")
@@ -36,8 +36,8 @@ def main():
         game_over, end_msg, task_package = check_endgame(task_package)
 
         if game_over:
-            awaiting_input, task_package = handle_game_over_loop(task_package, end_msg)
-            if not awaiting_input:
+            outcome, task_package = handle_game_over_loop(task_package, end_msg)
+            if outcome != CommandOutcome.AWAITING_INPUT:
                 if not task_package:
                     msg_warn(get_message("error", "no_config"), 0)
         else:

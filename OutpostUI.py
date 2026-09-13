@@ -4,6 +4,7 @@
 import tkinter as tk
 from tkinter import ttk
 
+
 class OutpostUI:
     def __init__(self, root):
         global ACTIVE_UI
@@ -111,6 +112,26 @@ class OutpostUI:
         )
         self.command_label.grid(row=0, column=0, sticky="w", padx=(0, 8))
 
+        self.end_turn_button = tk.Button(
+            self.bottom_frame,
+            text="END TURN",
+            command=lambda: self.command_callback("end turn"),
+            bg="#d7c58a",
+            activebackground="#eadca9",
+            fg="#202020",
+            padx=12,
+            pady=4,
+            relief="raised",
+            borderwidth=2
+        )
+
+        self.end_turn_button.grid(
+            row=0,
+            column=3,
+            sticky="e",
+            padx=(10, 0)
+        )
+
         self.command_entry = ttk.Entry(
             self.bottom_frame,
             font=("Courier New", 11)
@@ -126,7 +147,6 @@ class OutpostUI:
         self.submit_button.grid(row=0, column=2, sticky="e", padx=(8, 0))
 
         self.command_entry.bind("<Return>", self.on_submit)
-
         # Placeholder command handler - replace later
         self.command_callback = None
 
@@ -169,10 +189,12 @@ class OutpostUI:
     # Question handling methods
     # ----------------------------------------------------------------------
 
-    def set_pending_question(self, callback, context=None):
+    def set_pending_question(self, callback, context=None, resume_turn=False, continue_command_phase=False):
         self.pending_question = {
             "callback": callback,
-            "context": context or {}
+            "context": context or {},
+            "resume_turn": resume_turn,
+            "continue_command_phase": continue_command_phase
         }
 
     def clear_pending_question(self):
@@ -183,23 +205,46 @@ class OutpostUI:
     # ----------------------------------------------------------------------
 
     def on_submit(self, event=None):
+        
+        from constants import CommandOutcome
+        from turns import prepare_command_phase
+        from utils import save_config, update_screen
+
         command = self.command_entry.get().strip()
         if not command:
             return
         
         self.clear_command_entry()
+
+        # ---------------------------------------------------------
+        # RESPONSE TO A PENDING GUI QUESTION
+        # ---------------------------------------------------------
         if self.pending_question is not None:
             callback = self.pending_question["callback"]
             context = self.pending_question.get("context", {})
+            continue_command_phase = self.pending_question.get("continue_command_phase", False)
             self.clear_pending_question()
             self.clear_command_prompt()
-            updated_task_package = callback(command, context)
+            outcome, updated_task_package = callback(command, context)
 
-            if updated_task_package is not None:
-                from turns import resume_turn_processing
-                updated_task_package = resume_turn_processing(updated_task_package)
+            if updated_task_package is None:
+                return
+
+            # The callback itself has asked another question.
+            if outcome == CommandOutcome.AWAITING_INPUT:
+                return
+
+            if continue_command_phase:
+                outcome, updated_task_package = prepare_command_phase(updated_task_package)
+            
+            save_config(updated_task_package)
+            update_screen(updated_task_package)
+
             return
 
+        # ---------------------------------------------------------
+        # NORMAL PLAYER COMMAND
+        # ---------------------------------------------------------
         if self.command_callback:
             self.command_callback(command)
             

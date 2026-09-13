@@ -6,72 +6,64 @@ from datetime import datetime
 
 from actions import handle_immediate_or_queued_task, start_next_queued_task_for_character
 from commands import handle_reset_command, clear_task_for_character
-from command_utils import handle_read_command,  get_task_by_worker, remove_task_by_id
-from constants import TASK_ASSIGNED, TASK_EXAMINING, TASK_CHARGING, TASK_EATING, ALL_TASKS
+from command_utils import handle_read_command,  get_task_by_worker, remove_task_by_id, get_pronouns
+from constants import TASK_ASSIGNED, TASK_EXAMINING, TASK_CHARGING, TASK_EATING, ALL_TASKS, CommandOutcome
 from endgame import check_endgame, handle_game_over_loop
 from lore.lore_ingame import get_message, handle_help_command
 from lore.lore_story import get_story_message
 import lore.user_interface as ui_runtime
 from lore.user_interface import msg_warn, msg_story, msg_error, msg_info, msg_food, get_input
 from planting import update_crop_growth, return_reserved_meal
-from resources import decrease_droid_charge
+from queuing import get_character_status, feed_hungry_human
+from resources import decrease_droid_charge, get_resource, try_start_charge_task
 from status import handle_list_command
-from tasks import advance_tasks
-from utils import (can_character_act, character_not_interruptible, is_command_enabled, load_config, process_hunger_status, check_shield_state, 
+from tasks import check_completed_tasks, handle_examine_answer
+from utils import (can_provide_a_meal, can_character_act, character_not_interruptible, is_command_enabled, load_config, process_hunger_status, check_shield_state, 
                    save_config, update_screen, get_best_match)
 
 
-def process_turn(command, task_package):
+def process_command(command, task_package):
     tokens = command.strip().split()
     if not tokens:
-        return False, task_package
+        return CommandOutcome.INVALID, task_package
 
     action = tokens[0]
     qualifier = tokens[1] if len(tokens) > 1 else None
-    dock_a_turn = False
 
     turns_elapsed = task_package["counters"]["turns"]
     gamestate = task_package["gamestate"]
 
+    outcome = CommandOutcome.INVALID
+
     # Restrict commands if game is over
     if gamestate.get("game_over", False) and action not in ["status", "help", "reset", "quit"]:
         msg_story(get_story_message("endgame", "restart"), turns_elapsed)
-        return True, task_package
+        return CommandOutcome.CANNOT_EXECUTE, task_package
 
     # Unknown command
     if action not in gamestate:
         msg_error(get_message("error", "unknown_command", command=action), turns_elapsed)
-        return False, task_package
+        return CommandOutcome.INVALID, task_package
 
     # Command not yet unlocked
     if not is_command_enabled(action, gamestate):
         msg_error(get_message("error", "can't_do_that_yet", command=command), turns_elapsed)
-        return False, task_package
+        return CommandOutcome.CANNOT_EXECUTE, task_package
 
-    # Handle known commands
-    if action == "next":
-        dock_a_turn = True
-
-    elif action == "read":
-        awaiting_input, task_package = handle_read_command(task_package, turns_elapsed, qualifier)
-        if awaiting_input:
-            return dock_a_turn, task_package
+    if action == "read":
+        outcome, task_package = handle_read_command(task_package, turns_elapsed, qualifier)
 
     elif action == "replace":
-        awaiting_input, task_package = handle_replace_command(qualifier, task_package)
-        if awaiting_input:
-            return dock_a_turn, task_package
+        outcome, task_package = handle_replace_command(qualifier, task_package)
 
     elif action == "cancel":
-        awaiting_input, task_package = handle_cancel_command(qualifier, task_package)
-        if awaiting_input:
-            return dock_a_turn, task_package
+        outcome, task_package = handle_cancel_command(qualifier, task_package)
 
     elif action == "list":
-        handle_list_command(qualifier, task_package)
+        outcome, task_package = handle_list_command(qualifier, task_package)
 
     elif action == "help":
-        handle_help_command(task_package, qualifier=qualifier, gamestate=gamestate)
+        outcome, task_package = handle_help_command(task_package, qualifier=qualifier, gamestate=gamestate)
 
     elif action == "quit":
         msg_story(get_message("quit", "final"), turns_elapsed)
@@ -79,15 +71,13 @@ def process_turn(command, task_package):
         exit(0)
 
     elif action == "reset":
-        awaiting_input, task_package = handle_reset_command(task_package)
-        if awaiting_input:
-            return dock_a_turn, task_package
+        outcome, task_package = handle_reset_command(task_package)
 
     # Else it is a more involved command, so requires special processing
     else:
-        dock_a_turn, task_package = handle_immediate_or_queued_task(action, qualifier,  task_package)
+        outcome, task_package = handle_immediate_or_queued_task(action, qualifier,  task_package)
 
-    return dock_a_turn, task_package
+    return outcome, task_package
 
 
 def print_day_message(turns_elapsed, droids):
@@ -139,25 +129,26 @@ def print_day_message(turns_elapsed, droids):
 def progress_outpost(task_package):
     # Performs world progression that is NOT part of tasks or user commands.
 
-    # Increment turn count
+    # --- Increment turn count ---
     task_package["counters"]["turns"] += 1
 
+    # --- Calculate day count ---
     if task_package["counters"]["turns"] % 10 == 0:
         print_day_message(task_package["counters"]["turns"], task_package["droids"])
 
-    # --- Human hunger ---
+    # --- Deal with human hunger ---
     for name, stats in task_package["humans"].items():
         if stats.get("state") != "Deceased":
             stats["hunger"] += 1
             task_package = process_hunger_status(name, task_package)
 
-    # --- Droid charge ---
+    # --- Decrement droid charge ---
     task_package = decrease_droid_charge(task_package)
 
-    # --- Crop growth ---
+    # --- Update crop growth ---
     task_package = update_crop_growth(task_package)
 
-    # --- Shield state refresh ---
+    # --- Refresh shield state ---
     task_package = check_shield_state(task_package)
 
     # Future: weather, morale, events...
@@ -167,71 +158,210 @@ def progress_outpost(task_package):
 
 def process_user_input(command, resuming=False):
     task_package = load_config()
-    turn_suspended = task_package["gamestate"].get("turn_suspended", False)
 
-    # If this is a brand-new turn, process the command first
-    if not resuming and not turn_suspended:
-        count_as_turn, task_package = process_turn(command, task_package)
+    command_clean = command.strip().casefold()
 
-        # Invalid command / non-turn command: just save and return
-        if not count_as_turn:
-            save_config(task_package)
-            update_screen(task_package)
-            return task_package
+    # ---------------------------------------------------------
+    # END TURN
+    # Only these commands are allowed to advance world time.
+    # ---------------------------------------------------------
+    if command_clean in ("end turn", "endturn", "next"):
+        outcome, task_package = end_of_turn_processing(task_package)
+        if outcome != CommandOutcome.SUCCESS:
+            return outcome, task_package
+        
+        outcome, task_package = prepare_command_phase(task_package)
 
         save_config(task_package)
+        update_screen(task_package)
+        return outcome, task_package
 
-    # Whether this is:
-    # 1. a freshly processed turn command, or
-    # 2. a resumed suspended turn after a GUI response,
-    # continue the turn pipeline here.
-    task_package = resume_turn_processing(task_package)
-    return task_package
+    # ---------------------------------------------------------
+    # ORDINARY COMMAND
+    # Process the order, but DO NOT advance time.
+    # ---------------------------------------------------------
+    if not resuming:
+        outcome, task_package = process_command(command, task_package)
 
-
-def resume_turn_processing(task_package):
-    # Continue processing a turn after a command has already been accepted,
-    # or after a GUI question/answer has resolved.
-    awaiting_input, task_package = advance_tasks(task_package)
-
-    if awaiting_input:
-        task_package["gamestate"]["turn_suspended"] = True
         save_config(task_package)
-        return task_package
+        update_screen(task_package)
 
-    task_package["gamestate"]["turn_suspended"] = False
-    complete_turn(task_package)
+        return outcome, task_package
+
+    # ---------------------------------------------------------
+    # GUI callback / resumed command handling
+    # No turn progression here either.
+    # ---------------------------------------------------------
     save_config(task_package)
-    return task_package
+    update_screen(task_package)
+
+    return CommandOutcome.SUCCESS, task_package
+
+
+def end_of_turn_processing(task_package):
+    # Complete the turn, save the config and update the screen
+    outcome, task_package = complete_turn(task_package)
+    save_config(task_package)
+    update_screen(task_package)
+    
+    return outcome, task_package
 
 
 def complete_turn(task_package):
     # Progress the outpost
     task_package = progress_outpost(task_package)
     tasks = task_package["tasks"]
-    
+    outcome = CommandOutcome.SUCCESS
+
+    # Decrement the duration of all tasks in progress and check any that have completed
     for tid, task in tasks.items():
         task["duration"] -= 1
+    task_package = check_completed_tasks(task_package)
 
     # Check for endgame
     game_over, end_msg, task_package = check_endgame(task_package)
 
     if game_over:
-        awaiting_input, task_package = handle_game_over_loop(task_package, end_msg)
+        outcome, task_package = handle_game_over_loop(task_package, end_msg)
 
     # Save and update always
     task_package["gamestate"]["turn_suspended"] = False
     save_config(task_package)
     update_screen(task_package)
 
-    return task_package
+    return outcome, task_package
+
+
+def prepare_command_phase(task_package):
+    # Run checks on all state variables and pending changes for the next turn.
+    outcome, task_package = resolve_pending_problems(task_package)
+    if outcome == CommandOutcome.AWAITING_INPUT:
+        return outcome, task_package
+
+    outcome, task_package = resolve_pending_examinations(task_package)
+    if outcome == CommandOutcome.AWAITING_INPUT:
+        return outcome, task_package
+
+    outcome, task_package = anticipate_problems(task_package)
+    if outcome == CommandOutcome.AWAITING_INPUT:
+        return outcome, task_package
+
+    outcome, task_package = start_pending_queued_tasks(task_package)
+    return outcome, task_package
+
+
+def resolve_pending_problems(task_package):
+    humans = task_package["humans"]
+    droids = task_package["droids"]
+    resources = task_package["resources"]
+
+    # First check for completed tasks and action as needed
+    task_package = check_completed_tasks(task_package)
+
+    # Iterate through humans and feed them if they are idle and hungry/starving/near death
+    if can_provide_a_meal(resources):
+        for name in humans:
+            human = humans[name]
+            is_idle = human.get("task", "") == ""
+            if is_idle:
+                state = get_character_status(name, humans, droids)
+                if state in ("Hungry", "Starving", "NearDeath"):
+                    task_package = feed_hungry_human(name, task_package)
+            if not can_provide_a_meal(resources):   # Might now have run out of food
+                break
+
+    # Now do droids
+    for name in droids:
+        droid = droids[name]
+        is_idle = droid.get("task", "") == ""
+
+        if is_idle:
+            state = get_character_status(name, humans, droids)
+            if state in ("Low"):
+                outcome, task_package = try_start_charge_task(name, task_package)
+
+    return CommandOutcome.SUCCESS, task_package
+
+
+def resolve_pending_examinations(task_package):
+    humans = task_package["humans"]
+    droids = task_package["droids"]
+    resources = task_package["resources"]
+    turns_elapsed = task_package["counters"]["turns"]
+
+    all_characters = list(humans.keys()) + list(droids.keys())
+
+    for name in all_characters:
+        character = humans.get(name) or droids.get(name)
+        is_human = name in humans
+
+        item_name = character.get("examine_needed", "")
+
+        if not item_name:
+            continue
+
+        # If feeding, charging, towing, etc. has just begun,
+        # leave the examination pending until the character is idle.
+        if character.get("task", "") != "":
+            continue
+
+        discovered = get_resource(resources, item_name)
+        pronouns = get_pronouns(name, is_human)
+
+        if ui_runtime.UI_MODE == "gui" and ui_runtime.ACTIVE_UI is not None:
+            ui_runtime.ACTIVE_UI.set_pending_question(
+                callback=handle_examine_answer,
+                context={
+                    "task_package": task_package,
+                    "character_name": name,
+                    "item": discovered,
+                    "item_name": item_name,
+                    "is_human": is_human,
+                    "is_examining": False
+                },
+                resume_turn=False,
+                continue_command_phase=True
+            )
+
+        answer = get_input("input", "explore_found", turns_elapsed, target=name, res_name=item_name, pronoun=pronouns["p2"].lower())
+
+        if answer == ui_runtime.GUI_PENDING:
+            return CommandOutcome.AWAITING_INPUT, task_package
+
+    return CommandOutcome.SUCCESS, task_package
+
+
+def anticipate_problems(task_package):
+    # UNDER CONSTRUCTION
+    return CommandOutcome.SUCCESS, task_package
+
+
+def start_pending_queued_tasks(task_package):
+    humans = task_package["humans"]
+    droids = task_package["droids"]
+
+    all_characters = list(humans.keys()) + list(droids.keys())
+
+    for name in all_characters:
+        character = humans.get(name) or droids.get(name)
+
+        task = character.get("task", "")
+        is_idle = task == ""
+        if not is_idle:
+            continue
+
+        outcome, task_package = start_next_queued_task_for_character(name, task_package)
+
+        if outcome == CommandOutcome.AWAITING_INPUT:
+            return outcome, task_package
+
+    return CommandOutcome.SUCCESS, task_package
 
 
 def handle_replace_command(qualifier, task_package):
     # Handles the 'replace' command for characters. 
     # Which means (other than eating or charging), stop what you're doing and do this now
     turns_elapsed = task_package["counters"]["turns"]
-    awaiting_input = False
     
     # They added a name at the end, so just resume processing
     if qualifier:
@@ -239,9 +369,8 @@ def handle_replace_command(qualifier, task_package):
         context = {
             "task_package": task_package,
         }
-        if not resume_replace_command(name_input, context):
-            awaiting_input = True
-        return awaiting_input, task_package
+        outcome, task_package = resume_replace_command(name_input, context)
+        return outcome, task_package
 
     # They didn't add a name, so prompt for it, and the resume happens through the callback
     else:
@@ -250,15 +379,15 @@ def handle_replace_command(qualifier, task_package):
                     callback=resume_replace_command,
                     context={
                         "task_package": task_package,
-                    }
+                    },
+                    resume_turn = False
                 )
         answer = get_input("input", "replace", turns_elapsed).strip().lower()
 
         if answer and answer == ui_runtime.GUI_PENDING:
-            awaiting_input = True
-            return awaiting_input, task_package
+            return CommandOutcome.AWAITING_INPUT, task_package
 
-        return awaiting_input, task_package
+        return CommandOutcome.CANNOT_EXECUTE, task_package
 
 
 def resume_replace_command(answer, context):
@@ -268,12 +397,11 @@ def resume_replace_command(answer, context):
     tasks = task_package["tasks"]
     turns_elapsed = task_package["counters"]["turns"]
     name_input = answer
-    awaiting_input = False
 
     character = get_best_match(name_input, list(humans.keys()) + list(droids.keys()))
     if not character:
         msg_error(get_message("error", "no_character", name=name_input), turns_elapsed)
-        return awaiting_input, task_package
+        return CommandOutcome.INVALID, task_package
     
     # Get their current task, display it, and ask what they'd like to replace it with
     task_id, task = get_task_by_worker(tasks, character)
@@ -290,7 +418,7 @@ def resume_replace_command(answer, context):
 
     else:
         msg_error(get_message("replace", "is_idle", name=character), turns_elapsed)
-        return awaiting_input, task_package
+        return CommandOutcome.CANNOT_EXECUTE, task_package
 
     if ui_runtime.UI_MODE == "gui" and ui_runtime.ACTIVE_UI is not None:
             ui_runtime.ACTIVE_UI.set_pending_question(
@@ -298,14 +426,15 @@ def resume_replace_command(answer, context):
                 context={
                     "task_package": task_package,
                     "name": character
-                }
+                },
+                resume_turn = False
             )
     answer = get_input("replace", "with_what", turns_elapsed, name=character, task_name=task_now_doing)
 
     if answer and answer != ui_runtime.GUI_PENDING:
         msg_warn(get_message("error", "no_CLI", turns_elapsed))
 
-    return None     # Should always be this once we get to the question stage
+    return CommandOutcome.AWAITING_INPUT, task_package     # Should always be this once we get to the question stage
 
 
 def complete_replace_command(answer, context):
@@ -318,10 +447,10 @@ def complete_replace_command(answer, context):
 
     if answer and answer == "0":
         msg_info(get_message("replace", "not_replaced", name=character), turns_elapsed)
-        return None    # This will not dock a turn
+        return CommandOutcome.CANNOT_EXECUTE, task_package
     elif not answer:
         msg_info(get_message("replace", "aborted"), turns_elapsed)
-        return None    # This will not dock a turn
+        return CommandOutcome.INVALID, task_package
 
     # Now go ahead and process the new task
     new_task = answer
@@ -339,15 +468,14 @@ def complete_replace_command(answer, context):
             queue = droids[character]["queue"]
         else:
             msg_warn(get_message("error", "character_not_found", name=character), turns_elapsed)
-            return task_package
+            return CommandOutcome.INVALID, task_package
 
-        # Now remove the first queued task and make that slot empty 
-        # (to be picked up later by add_to_queue, within handle_immediate_or_queued_task)
+        # Now remove the first queued task and make that slot empty (to be picked up later)
         queue["3"] = queue["2"].copy()
         queue["2"] = queue["1"].copy()
         queue["1"] = {"task": "", "item": ""}
 
-        return task_package
+        return CommandOutcome.CANNOT_EXECUTE, task_package
     
     # It's a valid task, go ahead with it
     if new_task in ALL_TASKS:
@@ -358,17 +486,13 @@ def complete_replace_command(answer, context):
     # It's an invalid task e.g. 'save_the_universe'
     else:
         msg_error(get_message("replace", "invalid_task", name=character, new_task=new_task), turns_elapsed)
-        return None   # This means it won't cost them a turn
+        return CommandOutcome.INVALID, task_package
 
     # Now process the new command
     qualifier = character
-    valid_command, task_package = handle_immediate_or_queued_task(new_task , qualifier, task_package)
+    outcome, task_package = handle_immediate_or_queued_task(new_task , qualifier, task_package)
 
-    if valid_command:
-        task_package = resume_turn_processing(task_package)
-        return task_package
-    else:
-        return None    # This is likely to be because we are in the middle of sorting out the new command
+    return outcome, task_package
 
 
 def handle_cancel_command(qualifier, task_package):
@@ -388,14 +512,14 @@ def handle_cancel_command(qualifier, task_package):
             callback=resume_cancel_command,
             context={
                 "task_package": task_package,
-            }
+            },
+            resume_turn = False
         )
 
     answer = get_input("cancel", "who", turns_elapsed).strip().lower()
 
     if answer and answer == ui_runtime.GUI_PENDING:
-        awaiting_input = True
-        return awaiting_input, task_package
+        return CommandOutcome.AWAITING_INPUT, task_package
 
     return resume_cancel_command(answer, {"task_package": task_package})
 
@@ -412,7 +536,7 @@ def resume_cancel_command(answer, context):
     character = get_best_match(answer, list(humans.keys()) + list(droids.keys()))
     if not character:
         msg_error(get_message("error", "no_character", name=answer), turns_elapsed)
-        return awaiting_input, task_package
+        return CommandOutcome.INVALID, task_package
 
     # Get queue and task information    
     if character in humans:
@@ -423,16 +547,16 @@ def resume_cancel_command(answer, context):
         task_now_doing = droids[character].get("task", "")
     else:
         msg_error(get_message("error", "character_not_found", name=character), turns_elapsed)
-        return awaiting_input, task_package
+        return CommandOutcome.INVALID, task_package
     
     task_id, task = get_task_by_worker(tasks, character)
     if not task and not task_now_doing:
         msg_error(get_message("cancel", "nothing_to_cancel", name=character), turns_elapsed)
-        return awaiting_input, task_package
+        return CommandOutcome.CANNOT_EXECUTE, task_package
 
     if task:
         if character_not_interruptible(character, task["type"], task_package):
-            return awaiting_input, task_package
+            return CommandOutcome.CANNOT_EXECUTE, task_package
 
     has_current_task = task is not None or task_now_doing != ""
     queued_slots = [slot for slot in ("1", "2", "3") if queue[slot]["task"] != ""]
@@ -440,7 +564,7 @@ def resume_cancel_command(answer, context):
 
     if not has_current_task and not has_queue:
         msg_error(get_message("cancel", "nothing_to_cancel", name=character), turns_elapsed)
-        return awaiting_input, task_package
+        return CommandOutcome.CANNOT_EXECUTE, task_package
 
     current_task_desc = "--Idle--"
     current_task_type = ""
@@ -455,7 +579,7 @@ def resume_cancel_command(answer, context):
     # If the character has no task, but is assigned or is showing a task, we can clear it and return to idle
     elif task_now_doing:
         humans, droids = clear_task_for_character(name, "", humans, droids)
-        return awaiting_input, task_package
+        return CommandOutcome.SUCCESS, task_package
 
     queue_desc = []
     for slot in queued_slots:
@@ -480,14 +604,14 @@ def resume_cancel_command(answer, context):
                     "current_task_type": "",
                     "queued_slots": queued_slots,
                     "mode": "queue_only",
-                }
+                },
+                resume_turn = False
             )
 
         answer = get_input("cancel", "which_queued", turns_elapsed, name=character, queue_list=queue_string)
 
         if answer and answer == ui_runtime.GUI_PENDING:
-            awaiting_input = True
-            return awaiting_input, task_package
+            return CommandOutcome.AWAITING_INPUT, task_package
 
         task_package = complete_cancel_command(answer, {
             "task_package": task_package,
@@ -497,7 +621,7 @@ def resume_cancel_command(answer, context):
             "queued_slots": queued_slots,
             "mode": "queue_only",
         })
-        return awaiting_input, task_package
+        return CommandOutcome.AWAITING_INPUT, task_package
 
     # Otherwise ask whether to cancel current or queued
     if ui_runtime.UI_MODE == "gui" and ui_runtime.ACTIVE_UI is not None:
@@ -510,14 +634,14 @@ def resume_cancel_command(answer, context):
                 "current_task_type": current_task_type,
                 "queued_slots": queued_slots,
                 "mode": "choose_cancel_type",
-            }
+            },
+            resume_turn = False
         )
 
     answer = get_input("cancel", "current_or_queue", turns_elapsed, name=character, current_task=current_task_desc, queue_list=queue_string)
 
     if answer and answer  == ui_runtime.GUI_PENDING:
-        awaiting_input = True
-        return awaiting_input, task_package
+        return CommandOutcome.AWAITING_INPUT, task_package
 
     task_package = complete_cancel_command(answer, {
         "task_package": task_package,
@@ -527,7 +651,7 @@ def resume_cancel_command(answer, context):
         "queued_slots": queued_slots,
         "mode": "choose_cancel_type",
     })
-    return False, task_package
+    return CommandOutcome.SUCCESS, task_package
 
 
 def complete_cancel_command(answer, context):
@@ -551,7 +675,7 @@ def complete_cancel_command(answer, context):
         is_human = False
     else:
         msg_error(get_message("error", "character_not_found", name=character), turns_elapsed)
-        return task_package
+        return CommandOutcome.CANNOT_EXECUTE, task_package
 
     # Stage 1: choose current vs queued
     if mode == "choose_cancel_type":
@@ -559,16 +683,16 @@ def complete_cancel_command(answer, context):
 
         if choice == "0":
             msg_info(get_message("cancel", "not_cancelled", name=character), turns_elapsed)
-            return task_package
+            return CommandOutcome.CANNOT_EXECUTE, task_package
 
         if choice == "1":
             if current_task_type in (TASK_EATING, TASK_CHARGING):
                 msg_warn(get_message("cancel", "cannot_interrupt", name=character, task=current_task_type), turns_elapsed)
-                return task_package
+                return CommandOutcome.CANNOT_EXECUTE, task_package
 
             if task_id is None or task_id not in tasks:
                 msg_error(get_message("cancel", "nothing_current", name=character), turns_elapsed)
-                return task_package
+                return CommandOutcome.CANNOT_EXECUTE, task_package
 
             old_task = tasks[task_id]["type"]
             remove_task_by_id(task_id, task_package)
@@ -577,23 +701,14 @@ def complete_cancel_command(answer, context):
 
             if not queued_slots:
                 msg_info(get_message("cancel", "no_queued_tasks", name=character), turns_elapsed)
-                return task_package
+                return CommandOutcome.CANNOT_EXECUTE, task_package
 
-            # Check if they're okay to act before letting them act
-            task_type = ""
-            okay_to_act, task_package = can_character_act(name, "task", task_package)
-            if okay_to_act:
-                awaiting_input, task_package = start_next_queued_task_for_character(character, task_package)
-
-                if awaiting_input:
-                    return None
-
-            return task_package
+            return CommandOutcome.SUCCESS, task_package
 
         if choice == "2":
             if not queued_slots:
                 msg_error(get_message("cancel", "no_queued_tasks", name=character), turns_elapsed)
-                return task_package
+                return CommandOutcome.CANNOT_EXECUTE, task_package
 
             if ui_runtime.UI_MODE == "gui" and ui_runtime.ACTIVE_UI is not None:
                 ui_runtime.ACTIVE_UI.set_pending_question(
@@ -605,7 +720,8 @@ def complete_cancel_command(answer, context):
                         "current_task_type": current_task_type,
                         "queued_slots": queued_slots,
                         "mode": "queue_only",
-                    }
+                    },
+                    resume_turn = False
                 )
 
             answer = get_input("cancel", "which_queued", turns_elapsed, name=character, queue_list=", ".join(queued_slots))
@@ -613,7 +729,7 @@ def complete_cancel_command(answer, context):
             if answer and answer  == ui_runtime.GUI_PENDING:
                 task_package["gamestate"]["turn_suspended"] = True
                 save_config(task_package)
-                return None
+                return CommandOutcome.AWAITING_INPUT, task_package
 
             return complete_cancel_command(answer, {
                 "task_package": task_package,
@@ -625,7 +741,7 @@ def complete_cancel_command(answer, context):
             })
 
         msg_error(get_message("cancel", "invalid_choice", choice=choice), turns_elapsed)
-        return task_package
+        return CommandOutcome.INVALID, task_package
 
     # Stage 2: remove queued task
     if mode == "queue_only":
@@ -634,11 +750,11 @@ def complete_cancel_command(answer, context):
 
         if slot == "0":
             msg_info(get_message("cancel", "not_cancelled", name=character), turns_elapsed)
-            return task_package
+            return CommandOutcome.SUCCESS, task_package
 
         if slot not in ("1", "2", "3") or slot not in queued_slots:
             msg_error(get_message("cancel", "invalid_queue_slot", slot=slot, name=character), turns_elapsed)
-            return task_package
+            return CommandOutcome.INVALID, task_package
 
         # Capture everything before shifting the queue.
         removed_record = queue[slot].copy()
@@ -665,7 +781,7 @@ def complete_cancel_command(answer, context):
             queue["3"] = {"task": "", "item": ""}
 
         msg_info(get_message("cancel", "queued_cancelled", name=character, task=removed_task, slot=slot), turns_elapsed)
-        return task_package
+        return CommandOutcome.SUCCESS, task_package
 
     msg_error("[Cancel command mode not recognised]", turns_elapsed)
-    return task_package
+    return CommandOutcome.CANNOT_EXECUTE, task_package

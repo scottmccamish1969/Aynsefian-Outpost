@@ -7,7 +7,7 @@ import difflib
 
 from command_utils import get_pronouns, get_task_by_worker, remove_task_by_id
 from constants import (NAMES, INITIAL_GAMESTATE, CONFIG_FILE, LOG_FILE, LOG_FILE_OLD, HUNGER, NUM_HUMANS, NUM_DROIDS, HUNGER_WARNING, 
-    TASK_ASSIGNED, TASK_PLANTING, TASK_EATING, TASK_REAPING, TASK_CHARGING, TASK_TOWING_DROID, FOOD_PER_DAY, FULL_DROID_CHARGE)
+    TASK_ASSIGNED, TASK_PLANTING, TASK_EATING, TASK_REAPING, TASK_CHARGING, TASK_TOWING_DROID, FOOD_PER_DAY, FULL_DROID_CHARGE, CommandOutcome)
 from lore.lore_ingame import get_message
 from lore.lore_story import print_orders
 import lore.user_interface as ui_runtime
@@ -124,15 +124,16 @@ def initialise_outpost(first_time):
         },
         tasks={}
     )
+    null_task_package = task_package.copy()
 
     # Save after initialising
     save_config(task_package)
 
     if first_time:
-        print_orders(task_package["gamestate"])
-        return None
+        outcome, null_task_package = print_orders(task_package["gamestate"])
+        return outcome, task_package
 
-    return task_package
+    return CommandOutcome.SUCCESS, task_package
 
 
 def save_config(task_package):
@@ -174,9 +175,9 @@ def load_config():
 
     else:
         first_time = True
-        task_package = initialise_outpost(first_time)
+        outcome, task_package = initialise_outpost(first_time)
 
-        return task_package
+        return outcome, task_package
 
 
 def reset_config(task_package, context):
@@ -190,14 +191,16 @@ def reset_config(task_package, context):
         os.replace(LOG_FILE, LOG_FILE_OLD)
 
     first_time = False
-    task_package = initialise_outpost(first_time)
+    outcome, task_package = initialise_outpost(first_time)
 
     # Update the gui screen (if using) and save to config file
-    if task_package:
+    if outcome == CommandOutcome.SUCCESS:
         if ui_runtime.GUI_PENDING:
             update_screen(task_package)
 
     msg_info(get_message("reset", "done"), 0)
+
+    return CommandOutcome.SUCCESS, task_package
 
 
 def get_best_match(name, candidates, cutoff=0.75):
@@ -324,7 +327,7 @@ def interrupt_task_if_starving(name, human, task_package):
     resources = task_package["resources"]
     turns_elapsed = task_package["counters"]["turns"]
 
-    if human["state"] != "Starving":
+    if human["state"] not in ("Starving", "NearDeath"):
         return task_package
 
     task_id, task = get_task_by_worker(tasks, name)
@@ -351,19 +354,13 @@ def interrupt_task_if_starving(name, human, task_package):
 
         remove_task_by_id(task_id, task_package)
 
-    # Whether they were just interrupted or were already idle,
-    # a starving human should immediately attempt to eat.
-    from queuing import do_auto_feed
-    return_msg, task_package = do_auto_feed(name, task_package)
-
-    if return_msg:
-        msg_food(return_msg, turns_elapsed, stamp=False)
+    human["awaiting_food"] = True
 
     return task_package
 
 
 
-def can_character_act(character, task_name, task_package, examine_after_explore=False):
+def can_character_act(character, task_name, task_package, examine_needed=False):
     # Generic checks to see if we can use this character (human or droid)
     humans = task_package["humans"]
     droids = task_package["droids"]
@@ -429,7 +426,7 @@ def can_character_act(character, task_name, task_package, examine_after_explore=
             return can_act, task_package
 
     # If this is an examine that has occurred after an explore, allow them to do it
-    if examine_after_explore:
+    if examine_needed:
         can_act = True
         return can_act, task_package
         
@@ -595,23 +592,21 @@ def parse_integer_answer(answer, min_value=None, max_value=None):
     return value, ""
 
 
-def set_examine_needed_after_explore(name, task_package):
+def set_examine_needed_after_explore(name, item, task_package):
     # Stores the examine-needed item for a character after an explore task,
     # if feeding or charging is about to happen.
     humans = task_package["humans"]
     droids = task_package["droids"]
     turns_elapsed = task_package["counters"]["turns"]
 
-    item = task_package.get("item", "")
     is_human = name in humans
 
     if is_human:
         humans[name]["examine_needed"] = item
         pronouns = get_pronouns(name, is_human)
-        msg_resource(get_message("examine", "pause_eating", name=name, pronoun1=pronouns["p1"].lower(), pronoun2=pronouns["p2"].lower(), item=item), turns_elapsed)
     else:
         droids[name]["examine_needed"] = item
-        msg_resource(get_message("examine", "pause_charging", name=name, item=item), turns_elapsed)
+        
     return task_package
 
 
@@ -640,7 +635,7 @@ def days_of_food_left(resources):
     return days_left
 
 
-def any_food_left(resources):
+def can_provide_a_meal(resources):
     ration = get_food_amount(resources, "rationPack")
     apple = get_food_amount(resources, "apple")
     cabbage = get_food_amount(resources, "cabbage")

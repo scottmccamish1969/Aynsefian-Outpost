@@ -1,7 +1,7 @@
 # status.py
 
 from constants import (ENDGAME_REASONS, FULL_DROID_CHARGE, HUNGER, NUM_HUMANS, NUM_DROIDS, LOW_CHARGE_FLAG, IDLE_CHARGE_USAGE, COMMAND_MAP,
-                      TASK_ASSIGNED, TASK_EXAMINING, TASK_EATING, TASK_CHARGING, TASK_REAPING, TASK_PLANTING, ONE_DAY_HUNGRY)
+                      TASK_ASSIGNED, TASK_EXAMINING, TASK_EATING, TASK_CHARGING, TASK_REAPING, TASK_PLANTING, ONE_DAY_HUNGRY, CommandOutcome)
 import lore.user_interface as ui_runtime
 from lore.user_interface import (log_and_display, get_input, msg_food, msg_power, msg_info, msg_plant,
                                  msg_error, msg_info, msg_crystal, msg_resource, msg_shield, DOMAIN_EMOJI)
@@ -294,17 +294,18 @@ def handle_list_command(qualifier, task_package):
                 callback=resume_list_command,
                 context={
                     "task_package": task_package,
-                }
+                },
+                resume_turn = False
             )
         answer = get_input("input", "list", turns_elapsed, can_be_listed=can_be_listed)
 
         if answer == ui_runtime.GUI_PENDING:
-            return None
+            return CommandOutcome.AWAITING_INPUT, task_package
     
     else:
         resume_list_command(qualifier, {"task_package": task_package,})
 
-    return None
+    return CommandOutcome.SUCCESS, task_package
 
 
 def resume_list_command(answer, context):
@@ -325,7 +326,7 @@ def resume_list_command(answer, context):
         # Invalid command
         msg_error(get_message("error", "list_fail"), turns_elapsed)
 
-    return
+    return CommandOutcome.SUCCESS, task_package
 
 
 def list_food(task_package):

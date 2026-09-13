@@ -4,6 +4,7 @@ import sys
 import os
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 
+from constants import CommandOutcome
 from lore.user_interface import msg_help, msg_warn, log_and_display
 
 import random
@@ -519,4 +520,4 @@ def handle_help_command(task_package, qualifier=None, gamestate=None):
     else:
         msg_help(" Help on that command is either not available yet, or that is not actually a command. Type 'help' for a list of available commands.", turns_elapsed)
 
-    return
+    return CommandOutcome.SUCCESS, task_package

@@ -2,10 +2,11 @@
 
 from enum import Enum, auto
 
-class TaskStartOutcome(Enum):
-    INVALID = auto()
-    STARTED = auto()
+class CommandOutcome(Enum):
     AWAITING_INPUT = auto()
+    CANNOT_EXECUTE = auto()
+    INVALID = auto()
+    SUCCESS = auto()
     
 # File names
 CONFIG_FILE = "outpost_config.json"

@@ -12,6 +12,7 @@ from lore.lore_ingame import print_commands
 from lore.user_interface import msg_story, get_input
 
 def print_orders(gamestate):
+    from constants import CommandOutcome
     # This is the opening message (from President Axin) the NEW player gets at game start for the first time
     if gamestate == INITIAL_GAMESTATE:
         if ui_runtime.UI_MODE == "gui" and ui_runtime.ACTIVE_UI is not None:
@@ -20,11 +21,12 @@ def print_orders(gamestate):
                     context={
                         "task_package": {},
                         "first_time": True
-                    }
+                    },
+                    resume_turn = False
                 )
         answer = get_input("input", "first_time", 0)
         if answer and answer == ui_runtime.GUI_PENDING:
-            return None
+            return CommandOutcome.AWAITING_INPUT, {}
 
 
 def resume_printing_orders(answer, context):

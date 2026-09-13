@@ -150,7 +150,8 @@ def get_confirm(prompt, turns_elapsed=None, callback=None, context=None):
             context={
                 **(context or {}),
                 "prompt": prompt,
-            }
+            },
+            resume_turn = False
         )
 
         return GUI_PENDING
@@ -179,7 +180,8 @@ def get_integer_input(prompt, min_value=None, max_value=None, *, turns_elapsed=0
                 "prompt": prompt,
                 "min_value": min_value,
                 "max_value": max_value,
-            }
+            },
+            resume_turn = False
         )
 
         return GUI_PENDING

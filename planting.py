@@ -3,13 +3,14 @@
 import random
 import math
 from command_utils import create_task, get_pronouns
-from constants import SERVING_VALUE, HYDROPONICS_BED_MIN, HYDROPONICS_BED_MAX, SEED_PACKETS_USED, TASK_PLANTING, ONE_DAY_HUNGRY, NUM_HUMANS, TASK_LENGTH
+from constants import (SERVING_VALUE, HYDROPONICS_BED_MIN, HYDROPONICS_BED_MAX, SEED_PACKETS_USED, TASK_PLANTING, ONE_DAY_HUNGRY, NUM_HUMANS, 
+                       TASK_LENGTH, CommandOutcome)
 from lore.lore_ingame import get_message
 import lore.user_interface as ui_runtime
 from lore.user_interface import get_input, msg_plant, msg_food
-from queuing import is_idle, add_to_queue, do_auto_feed
+from queuing import is_idle, add_to_queue
 from status import display_character_summary
-from utils import process_hunger_status, can_character_act, days_of_food_left, any_food_left
+from utils import process_hunger_status, can_character_act, days_of_food_left, can_provide_a_meal
 
 
 def select_and_reserve_meal(name, multiplier, hunger_reduction, task_package):
@@ -337,13 +338,14 @@ def determine_what_to_plant_and_where(raw_target, task_package):
             context["from_gui_callback"] = True
             ui_runtime.ACTIVE_UI.set_pending_question(
                 callback=resume_plant_worker_selected,
-                context=context
+                context=context,
+                resume_turn = False
             )
 
         answer = get_input("plant", "who_plants", turns_elapsed)
 
         if answer == ui_runtime.GUI_PENDING:
-            return None
+            return CommandOutcome.AWAITING_INPUT, task_package
 
         context["raw_target"] = answer
         return continue_determine_what_to_plant_and_where(context)
@@ -448,13 +450,14 @@ def continue_determine_what_to_plant_and_where(context):
             context["from_gui_callback"] = True
             ui_runtime.ACTIVE_UI.set_pending_question(
                 callback=resume_plant_default,
-                context=context
+                context=context,
+                resume_turn = False
             )
 
         response = get_input("plant", "default", turns_elapsed)
 
         if response == ui_runtime.GUI_PENDING:
-            return None
+            return CommandOutcome.AWAITING_INPUT, task_package
 
         return resume_plant_default(response, context)
 
@@ -465,9 +468,9 @@ def return_plant_failure(context):
     task_package = context["task_package"]
 
     if context.get("from_gui_callback", False):
-        return task_package
+        return CommandOutcome.CANNOT_EXECUTE, task_package
 
-    return None
+    return CommandOutcome.CANNOT_EXECUTE, task_package
 
 
 def resume_plant_default(answer, context):
@@ -490,13 +493,14 @@ def ask_plant_how_many(context):
         context["from_gui_callback"] = True
         ui_runtime.ACTIVE_UI.set_pending_question(
             callback=resume_plant_how_many,
-            context=context
+            context=context,
+            resume_turn = False
         )
 
     response = get_input("plant", "how_many", turns_elapsed, available=free_beds)
 
     if response == ui_runtime.GUI_PENDING:
-        return None
+        return CommandOutcome.AWAITING_INPUT, task_package
 
     return resume_plant_how_many(response, context)
 
@@ -539,13 +543,14 @@ def ask_plant_which_crop(context):
         context["from_gui_callback"] = True
         ui_runtime.ACTIVE_UI.set_pending_question(
             callback=resume_plant_which_crop,
-            context=context
+            context=context,
+            resume_turn = False
         )
 
     response = get_input("plant", "which_crop", turns_elapsed)
 
     if response == ui_runtime.GUI_PENDING:
-        return None
+        return CommandOutcome.AWAITING_INPUT, task_package
 
     return resume_plant_which_crop(response, context)
 
@@ -578,19 +583,20 @@ def resume_plant_which_crop(answer, context):
 
 def finish_planting_selection(context):
     task_package = context["task_package"]
+    outcome = CommandOutcome.SUCCESS
 
     worker_name, crop_instructions, task_package = build_planting_instructions(context)
 
     if context.get("from_gui_callback", False):
-        valid_command, task_package = finish_initiate_plant_task(
+        outcome, task_package = finish_initiate_plant_task(
             name=worker_name,
             crop_instructions=crop_instructions,
             task_package=task_package,
             queued_task=False
         )
-        return task_package
+        return outcome, task_package
 
-    return True, worker_name, crop_instructions, task_package
+    return outcome, task_package
 
 
 def build_planting_instructions(context):
@@ -642,7 +648,6 @@ def finish_initiate_plant_task(name, crop_instructions, task_package, queued_tas
     droids = task_package["droids"]
     turns_elapsed = task_package["counters"]["turns"]
     task_type = TASK_PLANTING
-    valid_command = True
     
     # --- Inline functions ported from commands.py to avoid circular references ---
     def set_task_length(task_type):
@@ -655,35 +660,9 @@ def finish_initiate_plant_task(name, crop_instructions, task_package, queued_tas
     # If they are not idle, and this was not a queued task, add this action to their queue
     if not is_idle(name, humans, droids) and not queued_task:
         humans, droids = add_to_queue(name, humans, droids, turns_elapsed, task_type, task_data=crop_instructions)
-        return valid_command, task_package
+        return CommandOutcome.SUCCESS, task_package
 
     return_msg, task_package = create_task(name, task_type, duration, task_package, task_data=crop_instructions)
     msg_plant(return_msg, turns_elapsed)
 
-    return valid_command, task_package
-
-
-def feed_humans_waiting_for_food(task_package):
-    humans = task_package["humans"]
-    resources = task_package["resources"]
-    turns_elapsed = task_package["counters"]["turns"]
-
-    for name, human in humans.items():
-        if not human.get("awaiting_food", False):
-            continue
-
-        # A waiting human may currently be Reaping to retrieve food.
-        # Do not create an Eating task on top of another active task.
-        if human.get("task", "") != "":
-            continue
-
-        if not any_food_left(resources):
-            break
-
-        human["generated"] = True
-        return_msg, task_package = do_auto_feed(name, task_package)
-
-        if return_msg:
-            msg_food(return_msg, turns_elapsed, stamp=False)
-
-    return task_package
+    return CommandOutcome.SUCCESS, task_package

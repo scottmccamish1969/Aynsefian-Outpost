@@ -1,83 +1,130 @@
 {
-    "crops": {},
-    "droids": {
-        "Mike": {
-            "charge": 900,
-            "AncientCode": false,
-            "task": "Exploring",
-            "generated": true,
-            "item": "",
-            "examine_needed": "",
-            "first_charge": true,
-            "queue": {
-                "1": {
-                    "task": "Exploring",
-                    "item": ""
-                },
-                "2": {
-                    "task": "Exploring",
-                    "item": ""
-                },
-                "3": {
-                    "task": "Exploring",
-                    "item": ""
-                }
-            }
+    "crops": {
+        "0": {
+            "crop_id": 0,
+            "crop_type": "apple",
+            "bed_id": {
+                "id": 1,
+                "occupied": false,
+                "reserved": true,
+                "crop_id": null,
+                "reserved_by": "terry"
+            },
+            "worker": "terry",
+            "turns_remaining": 19,
+            "mature": false
         },
-        "Terry": {
-            "charge": 900,
+        "1": {
+            "crop_id": 1,
+            "crop_type": "cabbage",
+            "bed_id": {
+                "id": 2,
+                "occupied": false,
+                "reserved": true,
+                "crop_id": null,
+                "reserved_by": "terry"
+            },
+            "worker": "terry",
+            "turns_remaining": 29,
+            "mature": false
+        },
+        "2": {
+            "crop_id": 2,
+            "crop_type": "potato",
+            "bed_id": {
+                "id": 3,
+                "occupied": false,
+                "reserved": true,
+                "crop_id": null,
+                "reserved_by": "terry"
+            },
+            "worker": "terry",
+            "turns_remaining": 46,
+            "mature": false
+        }
+    },
+    "droids": {
+        "Carrie": {
+            "charge": 400,
             "AncientCode": false,
             "task": "Exploring",
             "generated": true,
             "item": "",
             "examine_needed": "",
             "first_charge": true,
+            "needs_tow": false,
+            "tow_declined": false,
+            "awaiting_power": false,
+            "power_wait_declined": false,
+            "power_wait_since": 0,
             "queue": {
                 "1": {
                     "task": "Exploring",
-                    "item": ""
+                    "item": "",
+                    "item_name": "",
+                    "task_data": {}
                 },
                 "2": {
-                    "task": "Exploring",
-                    "item": ""
+                    "task": "Mining",
+                    "item": "",
+                    "item_name": "",
+                    "task_data": {}
                 },
                 "3": {
-                    "task": "Exploring",
-                    "item": ""
+                    "task": "",
+                    "item": "",
+                    "item_name": "",
+                    "task_data": {}
                 }
             }
         },
         "Karla": {
-            "charge": 900,
+            "charge": 400,
             "AncientCode": false,
             "task": "Exploring",
             "generated": true,
             "item": "",
             "examine_needed": "",
             "first_charge": true,
+            "needs_tow": false,
+            "tow_declined": false,
+            "awaiting_power": false,
+            "power_wait_declined": false,
+            "power_wait_since": 0,
             "queue": {
                 "1": {
                     "task": "Exploring",
-                    "item": ""
+                    "item": "",
+                    "item_name": "",
+                    "task_data": {}
                 },
                 "2": {
                     "task": "Exploring",
-                    "item": ""
+                    "item": "",
+                    "item_name": "",
+                    "task_data": {}
                 },
                 "3": {
-                    "task": "Exploring",
-                    "item": ""
+                    "task": "",
+                    "item": "",
+                    "item_name": "",
+                    "task_data": {}
                 }
             }
         },
-        "Rin": {
-            "charge": 900,
+        "Mike": {
+            "charge": 400,
             "AncientCode": false,
-            "task": "Exploring",
+            "task": "Examining",
             "generated": true,
-            "item": "",
+            "item": "ShieldManual",
             "examine_needed": "",
             "first_charge": true,
+            "needs_tow": false,
+            "tow_declined": false,
+            "awaiting_power": false,
+            "power_wait_declined": false,
+            "power_wait_since": 0,
             "queue": {
                 "1": {
                     "task": "Exploring",
@@ -85,17 +132,53 @@
                 },
                 "2": {
                     "task": "Exploring",
-                    "item": ""
+                    "item": "",
+                    "item_name": "",
+                    "task_data": {}
                 },
                 "3": {
                     "task": "Exploring",
+                    "item": "",
+                    "item_name": "",
+                    "task_data": {}
+                }
+            }
+        },
+        "Fen": {
+            "charge": 400,
+            "AncientCode": false,
+            "task": "Examining",
+            "generated": true,
+            "item": "OldTerminal",
+            "examine_needed": "",
+            "first_charge": true,
+            "needs_tow": false,
+            "tow_declined": false,
+            "awaiting_power": false,
+            "power_wait_declined": false,
+            "power_wait_since": 0,
+            "queue": {
+                "1": {
+                    "task": "Exploring",
                     "item": ""
+                },
+                "2": {
+                    "task": "Exploring",
+                    "item": "",
+                    "item_name": "",
+                    "task_data": {}
+                },
+                "3": {
+                    "task": "Exploring",
+                    "item": "",
+                    "item_name": "",
+                    "task_data": {}
                 }
             }
         }
     },
     "gamestate": {
-        "assign": false,
+        "assign": true,
         "cancel": true,
         "charge": true,
         "examine": true,
@@ -103,13 +186,13 @@
         "feed": true,
         "help": true,
         "list": true,
-        "mine": false,
+        "mine": true,
         "next": true,
-        "plant": false,
+        "plant": true,
         "quit": true,
         "read": true,
-        "reap": false,
-        "refuel": false,
+        "reap": true,
+        "refuel": true,
         "repair": false,
         "replace": true,
         "reset": true,
@@ -118,25 +201,63 @@
         "endgame_reason": "null"
     },
     "humans": {
-        "Niobe": {
-            "hunger": 10,
-            "state": "Hungry",
-            "task": "Eating",
+        "Hariet": {
+            "hunger": 1,
+            "state": "Okay",
+            "task": "Examining",
             "generated": true,
-            "item": "ThreePacksOfSocks",
-            "examine_needed": "ThreePacksOfSocks",
+            "item": "CrystalProcessor",
+            "examine_needed": "",
+            "awaiting_food": false,
+            "food_wait_declined": false,
             "queue": {
                 "1": {
                     "task": "Exploring",
-                    "item": ""
+                    "item": "",
+                    "item_name": "",
+                    "task_data": {}
                 },
                 "2": {
                     "task": "Exploring",
-                    "item": ""
+                    "item": "",
+                    "item_name": "",
+                    "task_data": {}
                 },
                 "3": {
+                    "task": "Mining",
+                    "item": "",
+                    "item_name": "",
+                    "task_data": {}
+                }
+            }
+        },
+        "Niobe": {
+            "hunger": 1,
+            "state": "Okay",
+            "task": "Mining",
+            "generated": true,
+            "item": "",
+            "examine_needed": "",
+            "awaiting_food": false,
+            "food_wait_declined": false,
+            "queue": {
+                "1": {
                     "task": "Exploring",
-                    "item": ""
+                    "item": "",
+                    "item_name": "",
+                    "task_data": {}
+                },
+                "2": {
+                    "task": "Exploring",
+                    "item": "",
+                    "item_name": "",
+                    "task_data": {}
+                },
+                "3": {
+                    "task": "",
+                    "item": "",
+                    "item_name": "",
+                    "task_data": {}
                 }
             }
         },
@@ -147,67 +268,77 @@
             "generated": true,
             "item": "",
             "examine_needed": "",
+            "awaiting_food": false,
+            "food_wait_declined": false,
             "queue": {
                 "1": {
-                    "task": "Exploring",
-                    "item": ""
+                    "task": "Planting",
+                    "item": "",
+                    "item_name": "",
+                    "task_data": {
+                        "worker": "alex",
+                        "orders": [
+                            {
+                                "crop": "apple",
+                                "beds": [
+                                    {
+                                        "id": 4,
+                                        "occupied": false,
+                                        "reserved": true,
+                                        "crop_id": null,
+                                        "reserved_by": "alex"
+                                    }
+                                ]
+                            }
+                        ]
+                    }
                 },
                 "2": {
                     "task": "Exploring",
-                    "item": ""
+                    "item": "",
+                    "item_name": "",
+                    "task_data": {}
                 },
                 "3": {
                     "task": "",
-                    "item": ""
+                    "item": "",
+                    "item_name": "",
+                    "task_data": {}
                 }
             }
         },
-        "Carrie": {
-            "hunger": 10,
+        "Terry": {
+            "hunger": 11,
             "state": "Hungry",
             "task": "Eating",
-            "generated": true,
+            "generated": false,
             "item": "",
             "examine_needed": "",
+            "awaiting_food": false,
+            "food_wait_declined": false,
             "queue": {
                 "1": {
                     "task": "Exploring",
-                    "item": ""
+                    "item": "",
+                    "item_name": "",
+                    "task_data": {}
                 },
                 "2": {
                     "task": "Exploring",
-                    "item": ""
+                    "item": "",
+                    "item_name": "",
+                    "task_data": {}
                 },
                 "3": {
                     "task": "Exploring",
-                    "item": ""
-                }
-            }
-        },
-        "Hariet": {
-            "hunger": 10,
-            "state": "Hungry",
-            "task": "Exploring",
-            "generated": true,
-            "item": "",
-            "examine_needed": "",
-            "queue": {
-                "1": {
-                    "task": "Exploring",
-                    "item": ""
-                },
-                "2": {
-                    "task": "Exploring",
-                    "item": ""
-                },
-                "3": {
-                    "task": "Exploring",
-                    "item": ""
+                    "item": "",
+                    "item_name": "",
+                    "task_data": {}
                 }
             }
         }
     },
-    "item": "ThreePacksOfSocks",
+    "item": "",
     "resources": [
         {
             "name": "FoodStore",
@@ -221,7 +352,7 @@
             "augmented": false,
             "prob": 0.0,
             "found": true,
-            "rationPack": 19,
+            "rationPack": 12,
             "apple": 0,
             "cabbage": 0,
             "potato": 0,
@@ -244,7 +375,22 @@
             "prob": 0.0,
             "found": true,
             "amount": 11000,
-            "msg": "The power supply will eventually need vials of crystal dust. Initial charge level: 15000 units."
+            "msg": "The power supply will eventually need vials of crystal dust. Initial charge level: 11000 units.",
+            "CrystalStore": {
+                "red": 0,
+                "indigo": 0,
+                "gold": 0,
+                "total_found": {
+                    "red": 0,
+                    "indigo": 0,
+                    "gold": 0
+                },
+                "processed": {
+                    "red": 0,
+                    "indigo": 0,
+                    "gold": 0
+                }
+            }
         },
         {
             "name": "SeedStash",
@@ -258,10 +404,10 @@
             "augmented": false,
             "prob": 0.7,
             "found": true,
-            "apple": 219,
-            "cabbage": 60,
-            "potato": 121,
-            "msg": "You found a seed vault! Many varieties for hydroponic growth. There are 219 apple seeds, 121 potato seeds and 60 cabbage seeds."
+            "apple": 161,
+            "cabbage": 37,
+            "potato": 79,
+            "msg": "You found a seed vault! Many varieties for hydroponic growth. There are 162 apple seeds, 80 potato seeds and 38 cabbage seeds."
         },
         {
             "name": "WaterSource",
@@ -279,14 +425,152 @@
             "msg": "An essential supply of aqua pura for varying uses in this fledgling Outpost."
         },
         {
-            "name": "ThreePacksOfSocks",
-            "category": "junk",
-            "category_counter": 62,
+            "name": "HydroponicsRoom",
+            "category": "essential",
+            "category_counter": 5,
             "examinable": true,
-            "examined": false,
+            "examined": true,
+            "examine_turns": 3,
+            "replaceable": true,
+            "alternative_item": "FertileSoil",
+            "replaced": false,
+            "augmented": false,
+            "prob": 0.75,
+            "found": true,
+            "amount": 0,
+            "msg": "This room inside the Outpost building can be used to plant crops.",
+            "beds": [
+                {
+                    "id": 1,
+                    "occupied": true,
+                    "reserved": false,
+                    "crop_id": 0,
+                    "reserved_by": "terry"
+                },
+                {
+                    "id": 2,
+                    "occupied": true,
+                    "reserved": false,
+                    "crop_id": 1,
+                    "reserved_by": "terry"
+                },
+                {
+                    "id": 3,
+                    "occupied": true,
+                    "reserved": false,
+                    "crop_id": 2,
+                    "reserved_by": "terry"
+                },
+                {
+                    "id": 4,
+                    "occupied": false,
+                    "reserved": true,
+                    "crop_id": null,
+                    "reserved_by": "alex"
+                }
+            ],
+            "powered": true,
+            "power_usage": 10
+        },
+        {
+            "name": "Shades",
+            "category": "junk",
+            "category_counter": 25,
+            "examinable": true,
+            "examined": true,
             "examine_turns": 0,
             "found": true,
-            "msg": "These are actually multi-packs of socks, three of them. They look okay, at best. 21 pairs in total. Nobody needs any more socks. Hard to know what to do with these, in that case."
+            "msg": "Could be Oakley. Might be a dollar-store brand. It's hard to tell. Those fakes are *so good* these days. Wear them. At least you'll look cool if the MGC obliterates you."
+        },
+        {
+            "name": "MealMaker",
+            "category": "essential",
+            "category_counter": 7,
+            "examinable": true,
+            "examined": true,
+            "examine_turns": 2,
+            "replaceable": true,
+            "alternative_item": "CampFire",
+            "replaced": false,
+            "augmented": false,
+            "prob": 0.8,
+            "found": true,
+            "amount": 0,
+            "msg": "You have found a curious looking machine that resembles a blender with 10% more sophistication. It is very dark inside of it."
+        },
+        {
+            "name": "MothManKeepsake",
+            "category": "junk",
+            "category_counter": 31,
+            "examinable": true,
+            "examined": true,
+            "examine_turns": 0,
+            "found": true,
+            "msg": "A horrendous action figure that scares the Bejesus out of everyone. This might mean it's important. But probably not."
+        },
+        {
+            "name": "CrystalField",
+            "category": "essential",
+            "category_counter": 6,
+            "examinable": true,
+            "examined": true,
+            "examine_turns": 4,
+            "replaceable": false,
+            "replaced": false,
+            "augmented": false,
+            "prob": 0.8,
+            "found": true,
+            "amount": 0,
+            "msg": "Amazing. These looked just like any other rocks. Milennia of dust will do that to a crystal. You may have something useful here. There are three different colours: red, indigo and gold."
+        },
+        {
+            "name": "CrystalProcessor",
+            "category": "essential",
+            "category_counter": 8,
+            "examinable": true,
+            "examined": false,
+            "examine_turns": 2,
+            "replaceable": true,
+            "alternative_item": "CrystalMortarAndPestle",
+            "replaced": false,
+            "augmented": false,
+            "prob": 0.85,
+            "found": true,
+            "amount": 0,
+            "msg": "This thing looks like it could chew up ANYTHING that goes into it. Have you given everyone their annual health and safety brief?"
+        },
+        {
+            "name": "ShieldManual",
+            "category": "essential",
+            "category_counter": 9,
+            "examinable": true,
+            "examined": false,
+            "examine_turns": 4,
+            "replaceable": true,
+            "alternative_item": "ShieldOperatingCodes",
+            "replaced": false,
+            "augmented": false,
+            "prob": 0.85,
+            "found": true,
+            "amount": 0,
+            "decoded": false,
+            "msg": "Hmm, it's an old book of sorts. You can't understand the symbols on it. Someone is going to need to decode this."
+        },
+        {
+            "name": "OldTerminal",
+            "category": "essential",
+            "category_counter": 10,
+            "examinable": true,
+            "examined": false,
+            "examine_turns": 2,
+            "replaceable": true,
+            "alternative_item": "BlackTablet",
+            "replaced": false,
+            "augmented": false,
+            "prob": 0.9,
+            "found": true,
+            "amount": 0,
+            "msg": "This terminal is surprisingly still working. It may hold important clues to getting the shields up, or else why is it here?"
         }
     ],
     "shieldstate": {
@@ -298,67 +582,75 @@
         "shield_active": false
     },
     "tasks": {
-        "14": {
-            "type": "Exploring",
-            "name": "Hariet",
-            "human": true,
-            "duration": 1
-        },
-        "17": {
-            "type": "Exploring",
-            "name": "Mike",
-            "human": false,
-            "duration": 2
-        },
-        "18": {
-            "type": "Exploring",
-            "name": "Terry",
-            "human": false,
-            "duration": 3
-        },
-        "19": {
-            "type": "Exploring",
-            "name": "Karla",
-            "human": false,
-            "duration": 2
-        },
-        "20": {
-            "type": "Exploring",
-            "name": "Rin",
-            "human": false,
-            "duration": 2
-        },
-        "21": {
+        "41": {
             "type": "Exploring",
             "name": "Alex",
             "human": true,
             "duration": 3
         },
-        "22": {
-            "type": "Eating",
+        "42": {
+            "type": "Examining",
+            "name": "Mike",
+            "human": false,
+            "duration": 3,
+            "item_name": "ShieldManual"
+        },
+        "44": {
+            "type": "Exploring",
             "name": "Carrie",
-            "human": true,
-            "duration": 1
+            "human": false,
+            "duration": 2
         },
-        "23": {
-            "type": "Eating",
+        "45": {
+            "type": "Exploring",
+            "name": "Karla",
+            "human": false,
+            "duration": 3
+        },
+        "46": {
+            "type": "Mining",
             "name": "Niobe",
             "human": true,
-            "duration": 1
+            "duration": 7,
+            "worker": "Niobe"
         },
-        "24": {
+        "47": {
             "type": "Eating",
-            "name": "Niobe",
+            "name": "Terry",
             "human": true,
-            "duration": 1
+            "duration": 2,
+            "task_data": {
+                "food_items": {
+                    "rationPack": 1,
+                    "apple": 0,
+                    "potato": 0,
+                    "cabbage": 0
+                },
+                "hunger_reduction": 10,
+                "meal_type": "normal"
+            }
+        },
+        "48": {
+            "type": "Examining",
+            "name": "Hariet",
+            "human": true,
+            "duration": 4,
+            "item_name": "CrystalProcessor"
+        },
+        "49": {
+            "type": "Examining",
+            "name": "Fen",
+            "human": false,
+            "duration": 2,
+            "item_name": "OldTerminal"
         }
     },
     "task_data": {},
     "counters": {
-        "turns": 10,
-        "task": 24,
-        "crop": 0,
-        "explore": 7,
-        "found_nil": 0
+        "turns": 21,
+        "task": 49,
+        "crop": 3,
+        "explore": 18,
+        "found_nil": 2
     }
 }

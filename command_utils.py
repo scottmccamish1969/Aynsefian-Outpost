@@ -4,7 +4,8 @@ import os
 from copy import deepcopy
 
 from constants import (TASK_ASSIGNED, TASK_CHARGING, TASK_EXAMINING, TASK_EXPLORING, TASK_EATING, TASK_MINING, TASK_PLANTING, TASK_REAPING, TASK_REFUELING,
-                       TASK_TOWING_DROID, AVAILABLE_FILES, POWER_PER_RED, POWER_PER_INDIGO, POWER_PER_GOLD, FULL_DROID_CHARGE, GENDERS, MALE, FEMALE)
+                       TASK_TOWING_DROID, AVAILABLE_FILES, POWER_PER_RED, POWER_PER_INDIGO, POWER_PER_GOLD, FULL_DROID_CHARGE, GENDERS, MALE, FEMALE,
+                       CommandOutcome)
 from lore.lore_ingame import get_message
 from lore.lore_story import get_story_message
 import lore.user_interface as ui_runtime
@@ -105,25 +106,6 @@ def set_task_status_for_character(name, task_type, item_name, humans, droids, tu
         msg_error(get_message("error", "character_not_found", name=name), turns_elapsed)
 
     return humans, droids
-
-
-# Task clearing utility function
-def remove_task_by_name(name, task_package):
-    tasks = task_package["tasks"]
-    humans = task_package["humans"]
-    droids = task_package["droids"]
-
-    turns_elapsed = task_package["counters"]["turns"]
-
-    task_id, task = get_task_by_worker(tasks, name)
-    if not task:
-        msg_error(get_message("error", "no_existing_task", name=name), turns_elapsed)
-    else:
-        del tasks[task_id]
-        item_name = ""
-        humans, droids = clear_task_for_character(name, item_name, humans, droids)
-
-    return task_package
 
 
 def remove_task_by_id(task_id, task_package):
@@ -242,13 +224,13 @@ def handle_read_command(task_package, turns_elapsed, subject=None):
                     callback=resume_read_command,
                     context={
                         "task_package": task_package,
-                    }
+                    },
+                    resume_turn = False
                 )
         answer = get_input("input", "read", turns_elapsed, files=can_read_these)
 
         if answer and answer == ui_runtime.GUI_PENDING:
-            awaiting_input = True
-            return awaiting_input, task_package
+            return CommandOutcome.AWAITING_INPUT, task_package
 
 
 def resume_read_command(subject, context):
@@ -258,7 +240,7 @@ def resume_read_command(subject, context):
     if subject == "quit":
         log_and_display("", turns_elapsed)
         msg_info(get_message("read", "quit"), turns_elapsed)
-        return
+        return CommandOutcome.SUCCESS, task_package
     
     # Now continue as before
     if subject in AVAILABLE_FILES:
@@ -283,6 +265,8 @@ def resume_read_command(subject, context):
         msg_info(get_message("read", "nothing_further"), turns_elapsed)
     else:
         msg_info(get_message("read", "no_content", subject=subject), turns_elapsed)
+
+    return CommandOutcome.SUCCESS, task_package
 
 
 def get_full_character_tasks(name, humans, droids):
