@@ -7,18 +7,19 @@ from datetime import datetime
 from actions import handle_immediate_or_queued_task, start_next_queued_task_for_character
 from commands import handle_reset_command, clear_task_for_character
 from command_utils import handle_read_command,  get_task_by_worker, remove_task_by_id, get_pronouns
-from constants import TASK_ASSIGNED, TASK_EXAMINING, TASK_CHARGING, TASK_EATING, ALL_TASKS, CommandOutcome
+from constants import TASK_ASSIGNED, TASK_EXAMINING, TASK_CHARGING, TASK_EATING, TASK_PLANTING, ALL_TASKS, CommandOutcome
 from endgame import check_endgame, handle_game_over_loop
+from events import finalise_and_clear_turn_events
 from lore.lore_ingame import get_message, handle_help_command
 from lore.lore_story import get_story_message
 import lore.user_interface as ui_runtime
 from lore.user_interface import msg_warn, msg_story, msg_error, msg_info, msg_food, get_input
-from planting import update_crop_growth, return_reserved_meal
+from planting import update_crop_growth, return_reserved_meal, return_reserved_planting
 from queuing import get_character_status, feed_hungry_human
 from resources import decrease_droid_charge, get_resource, try_start_charge_task
 from status import handle_list_command
 from tasks import check_completed_tasks, handle_examine_answer
-from utils import (can_provide_a_meal, can_character_act, character_not_interruptible, is_command_enabled, load_config, process_hunger_status, check_shield_state, 
+from utils import (can_provide_a_meal, character_not_interruptible, is_command_enabled, load_config, process_hunger_status, check_shield_state, 
                    save_config, update_screen, get_best_match)
 
 
@@ -157,7 +158,7 @@ def progress_outpost(task_package):
 
 
 def process_user_input(command, resuming=False):
-    task_package = load_config()
+    outcome, task_package = load_config()
 
     command_clean = command.strip().casefold()
 
@@ -171,9 +172,12 @@ def process_user_input(command, resuming=False):
             return outcome, task_package
         
         outcome, task_package = prepare_command_phase(task_package)
+        if outcome == CommandOutcome.SUCCESS:
+            task_package = finalise_and_clear_turn_events(task_package)
 
         save_config(task_package)
         update_screen(task_package)
+
         return outcome, task_package
 
     # ---------------------------------------------------------
@@ -182,7 +186,6 @@ def process_user_input(command, resuming=False):
     # ---------------------------------------------------------
     if not resuming:
         outcome, task_package = process_command(command, task_package)
-
         save_config(task_package)
         update_screen(task_package)
 
@@ -201,9 +204,6 @@ def process_user_input(command, resuming=False):
 def end_of_turn_processing(task_package):
     # Complete the turn, save the config and update the screen
     outcome, task_package = complete_turn(task_package)
-    save_config(task_package)
-    update_screen(task_package)
-    
     return outcome, task_package
 
 
@@ -216,7 +216,7 @@ def complete_turn(task_package):
     # Decrement the duration of all tasks in progress and check any that have completed
     for tid, task in tasks.items():
         task["duration"] -= 1
-    task_package = check_completed_tasks(task_package)
+    task_package = check_completed_tasks(task_package)  # Used to be called 'advance_tasks()'
 
     # Check for endgame
     game_over, end_msg, task_package = check_endgame(task_package)
@@ -226,8 +226,6 @@ def complete_turn(task_package):
 
     # Save and update always
     task_package["gamestate"]["turn_suspended"] = False
-    save_config(task_package)
-    update_screen(task_package)
 
     return outcome, task_package
 
@@ -380,7 +378,8 @@ def handle_replace_command(qualifier, task_package):
                     context={
                         "task_package": task_package,
                     },
-                    resume_turn = False
+                    resume_turn = False,
+                    continue_command_phase=True
                 )
         answer = get_input("input", "replace", turns_elapsed).strip().lower()
 
@@ -479,8 +478,15 @@ def complete_replace_command(answer, context):
     
     # It's a valid task, go ahead with it
     if new_task in ALL_TASKS:
-        remove_task_by_id(task_id, task_package)    # Remove the old task and clear the character's status
         old_task = task["type"]
+
+        # Return seeds and release beds if replacing planting.
+        if old_task == TASK_PLANTING:
+            planting_data = tasks[task_id].get("task_data", {})
+            task_package = return_reserved_planting(planting_data, task_package)
+            
+        remove_task_by_id(task_id, task_package)    # Remove the old task and clear the character's status
+
         msg_info(get_message("replace", "replacing", name=character, old_task=old_task, new_task=new_task), turns_elapsed)
 
     # It's an invalid task e.g. 'save_the_universe'
@@ -530,7 +536,6 @@ def resume_cancel_command(answer, context):
     droids = task_package["droids"]
     tasks = task_package["tasks"]
     turns_elapsed = task_package["counters"]["turns"]
-    awaiting_input = False
     task_now_doing = ""
 
     character = get_best_match(answer, list(humans.keys()) + list(droids.keys()))
@@ -578,7 +583,7 @@ def resume_cancel_command(answer, context):
             current_task_desc = f"{current_task_type} ({task['duration']} turns remaining)"
     # If the character has no task, but is assigned or is showing a task, we can clear it and return to idle
     elif task_now_doing:
-        humans, droids = clear_task_for_character(name, "", humans, droids)
+        humans, droids = clear_task_for_character(character, "", humans, droids, turns_elapsed=turns_elapsed)
         return CommandOutcome.SUCCESS, task_package
 
     queue_desc = []
@@ -693,10 +698,15 @@ def complete_cancel_command(answer, context):
             if task_id is None or task_id not in tasks:
                 msg_error(get_message("cancel", "nothing_current", name=character), turns_elapsed)
                 return CommandOutcome.CANNOT_EXECUTE, task_package
-
+            
             old_task = tasks[task_id]["type"]
-            remove_task_by_id(task_id, task_package)
 
+            # Return seeds and release beds if cancelling planting.
+            if old_task == TASK_PLANTING:
+                planting_data = tasks[task_id].get("task_data", {})
+                task_package = return_reserved_planting(planting_data, task_package)
+
+            remove_task_by_id(task_id, task_package)
             msg_info(get_message("cancel", "current_cancelled", name=character, task=old_task), turns_elapsed)
 
             if not queued_slots:
@@ -728,7 +738,6 @@ def complete_cancel_command(answer, context):
 
             if answer and answer  == ui_runtime.GUI_PENDING:
                 task_package["gamestate"]["turn_suspended"] = True
-                save_config(task_package)
                 return CommandOutcome.AWAITING_INPUT, task_package
 
             return complete_cancel_command(answer, {
@@ -768,6 +777,13 @@ def complete_cancel_command(answer, context):
                 msg_food(get_message("feed", "food_returned", name=character), turns_elapsed, tone="warn")
             else:
                 msg_food(get_message("feed", "food_not_returned", name=character), turns_elapsed, tone="warn")
+
+        # Return seeds and release beds for queued Planting.
+        elif removed_task == TASK_PLANTING:
+            if task_data:
+                task_package = return_reserved_planting(task_data, task_package)
+            else:
+                msg_warn(get_message("plant", "seeds_not_returned", name=character), turns_elapsed)
 
         # Shift left after removal
         if slot == "1":

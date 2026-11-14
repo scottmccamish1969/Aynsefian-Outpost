@@ -1,14 +1,16 @@
 # resources.py
 
+from os import name
 import random
 from command_utils import get_task_by_worker, remove_task_by_id, create_task
 from constants import (RATION_PACKS, MAJOR_RESOURCES_ORDER, CHAIN_RESOURCES_ORDER, GATING_RULES, NORMAL_ITEM_RARITY, 
                        GATE_ITEM_RARITY, POST_CRITICAL_ITEM_RARITY, IDLE_CHARGE_USAGE, FULL_DROID_CHARGE, INITIAL_CHARGE, 
-                       INITIAL_SEED_STASH, SEED_PACKETS_USED, NUM_DROIDS, LOW_CHARGE_FLAG, TASK_CHARGING, TASK_PLANTING, 
-                       CommandOutcome, CHARGE_DURATION)
+                       INITIAL_SEED_STASH, SEED_PACKETS_USED, SEED_AMOUNT_RATIO, NUM_DROIDS, LOW_CHARGE_FLAG,  
+                       TASK_CHARGING, TASK_PLANTING, CommandOutcome, CHARGE_DURATION)
+from events import add_turn_event
 from items import REPLACEMENT, JUNK, ITEM_DB, get_item_template
 from lore.lore_ingame import get_message
-from lore.user_interface import msg_power
+from lore.user_interface import msg_power, msg_warn
 from utils import set_shield_state
 
 
@@ -25,6 +27,11 @@ def get_resource(resources, name):
 def resource_is_discovered(resources, name) -> bool:
     # True if this item name already exists in the discovered resources list.
     return any(r.get("name") == name for r in resources)
+
+
+def resource_is_usable(resources, name) -> bool:
+    # True if this item name already exists in the discovered resources list AND is examined/usable.
+    return any(r.get("name") == name and r.get("examined", False) for r in resources)
 
 
 def add_or_get_discovered_item(resources, name):
@@ -98,15 +105,18 @@ def force_next_critical(current_resources):
 
 
 def _pick_unfound_item(candidates):
-    #Generic helper: from a list of item dicts (Tarot, replacement, etc.),
-    #return a random unfound one, or None if none are available.
+    #Generic helper: from a list of item dicts return a random unfound one, or None if none are available.
     unfound = [c for c in candidates if not c.get("found", False)]
     if not unfound:
         return None
     return random.choice(unfound)
 
 
-def react_to_found_resource(resource_name, resources, droids, gamestate, shieldstate):
+def react_to_found_resource(resource_name, task_package):
+    resources = task_package["resources"]
+    droids = task_package["droids"]
+    gamestate = task_package["gamestate"]
+    shieldstate = task_package["shieldstate"]
     from planting import initialise_hydroponics_room
     
     for res in resources:
@@ -119,7 +129,8 @@ def react_to_found_resource(resource_name, resources, droids, gamestate, shields
 
     # Command unlock logic, plus setting of other variables
     if resource_name == "FoodStore" and amount is None:
-        amount = RATION_PACKS
+        discovered, resources = add_or_get_discovered_item(resources, resource_name)
+        discovered["amount"] = RATION_PACKS
 
     elif resource_name == "PowerSupply" and amount is None:
         discovered, resources = add_or_get_discovered_item(resources, resource_name)
@@ -128,35 +139,20 @@ def react_to_found_resource(resource_name, resources, droids, gamestate, shields
     elif resource_name == "SeedStash":
         discovered, resources = add_or_get_discovered_item(resources, resource_name)
         # Only randomise if first time discovered
-        if not discovered.get("examined", False):
+        if not discovered.get("randomised", False):
 
-            # Use ratios from SEED_PACKETS_USED
-            base_weights = SEED_PACKETS_USED
-            total_weight = sum(base_weights.values())
-
-            # Random variation factor (0.85–1.15 gives nice replayability)
-            import random
-            variation = {
-                crop: random.uniform(0.85, 1.15)
-                for crop in base_weights
-            }
-
-            # Compute weighted amounts
-            apple_raw = base_weights["apple"] * variation["apple"]
-            potato_raw = base_weights["potato"] * variation["potato"]
-            cabbage_raw = base_weights["cabbage"] * variation["cabbage"]
-
-            # Convert to proportional amounts of INITIAL_SEED_STASH
-            total_raw = apple_raw + potato_raw + cabbage_raw
-
-            apple_amount = int((apple_raw / total_raw) * INITIAL_SEED_STASH)
-            potato_amount = int((potato_raw / total_raw) * INITIAL_SEED_STASH)
-            cabbage_amount = INITIAL_SEED_STASH - apple_amount - potato_amount
+            potato_amount = int(random.uniform(*SEED_AMOUNT_RATIO["potato"]) * INITIAL_SEED_STASH)
+            onion_amount = int(random.uniform(*SEED_AMOUNT_RATIO["onion"]) * INITIAL_SEED_STASH)
+            apple_amount = int(random.uniform(*SEED_AMOUNT_RATIO["apple"]) * INITIAL_SEED_STASH)
+            avocado_amount = INITIAL_SEED_STASH - potato_amount - onion_amount - apple_amount
 
             # Store them on the resource dict
-            discovered["apple"] = apple_amount
             discovered["potato"] = potato_amount
-            discovered["cabbage"] = cabbage_amount
+            discovered["onion"] = onion_amount
+            discovered["apple"] = apple_amount
+            discovered["avocado"] = avocado_amount
+
+            discovered["randomised"] = True
 
         # Enable planting when the conditions are met
         if resource_is_discovered(resources, "WaterSource") and resource_is_discovered(resources, "HydroponicsRoom"):
@@ -191,10 +187,14 @@ def react_to_found_resource(resource_name, resources, droids, gamestate, shields
         shieldstate = set_shield_state("A", droids, resources, shieldstate)
         gamestate["assign"] = True
 
-    return resources, droids, shieldstate
+    task_package["resources"] = resources
+    task_package["shieldstate"] = shieldstate
 
-# Decide what (if anything) an exploration run discovers.
+    return task_package
+
+
 def attempt_exploration(task_package, allow_chain_early=True):
+    # Decide what (if anything) an exploration run discovers.
     current_resources = task_package["resources"]
     turns_elapsed = task_package["counters"]["turns"]
     explore_count = task_package["counters"]["explore"]
@@ -252,10 +252,23 @@ def attempt_exploration(task_package, allow_chain_early=True):
             found_resource = next_major
 
     # ---------------------------------------------------
-    # 4) Chain resources (CrystalCombination → DecodeKey → AncientDroidCode)
-    #    - Only considered once ALL major essentials are found.
+    # 4) Chain resources
     # ---------------------------------------------------
-    if not found_resource and all_major_resources_found(current_resources):
+
+    cooking_equipment_found = (
+        resource_is_discovered(current_resources, "MealMaker")
+        or resource_is_discovered(current_resources, "CampFire")
+    )
+
+    # RecipeBooklet is the next discovery after cooking equipment.
+    if (
+        cooking_equipment_found
+        and not resource_is_discovered(current_resources, "RecipeBooklet")
+    ):
+        found_resource = "RecipeBooklet"
+
+    # Other chain resources retain their existing rules.
+    elif not found_resource and all_major_resources_found(current_resources):
         chain_to_consider = None
 
         if not resource_is_discovered(current_resources, "CrystalCombination"):
@@ -267,7 +280,7 @@ def attempt_exploration(task_package, allow_chain_early=True):
 
         if chain_to_consider and allow_chain_early:
             chain_roll = random.random()
-            # 25% chance per explore attempt to get the next chain item
+
             if chain_roll < 0.25:
                 found_resource = chain_to_consider
 
@@ -280,6 +293,7 @@ def attempt_exploration(task_package, allow_chain_early=True):
             else found_resource.get("name", "")
         )
         found_nothing_count = 0
+        task_package["counters"]["found_nil"] = 0
         return name_of_found_resource, task_package
 
     # 6) No major item found -> update 'found_nothing_count'
@@ -387,7 +401,11 @@ def charge_droid(droid_name, droids, resources, turns_elapsed):
     power_after_charge = power_resource["amount"]
     if power_after_charge < IDLE_CHARGE_USAGE*NUM_DROIDS and power_before_charge >= IDLE_CHARGE_USAGE*NUM_DROIDS:
         msg_power(get_message("charge", "low_power_warning"), turns_elapsed, tone="warn")
-        
+
+        # Add a turn event
+        event_priority = 3
+        task_package = add_turn_event(task_package, "charge", event_priority, name=name, result="low_power_warning")
+
     return user_message, droids, resources
 
 
@@ -459,6 +477,10 @@ def try_start_charge_task(name, task_package):
 
     return_msg, task_package = create_task(name, TASK_CHARGING, CHARGE_DURATION, task_package, task_data=task_data)
     msg_power(return_msg, turns_elapsed)
+        
+    # Add the event
+    event_priority = 6
+    task_package = add_turn_event(task_package, "charge", event_priority, name=name, result="started", reserved_power=power_required)
 
     droid["awaiting_power"] = False
     droid["power_wait_declined"] = False
@@ -468,7 +490,6 @@ def try_start_charge_task(name, task_package):
 
 def interrupt_task_if_no_power(name, task_package):
     droids = task_package["droids"]
-    resources = task_package["resources"]
     tasks = task_package["tasks"]
     turns_elapsed = task_package["counters"]["turns"]
 
@@ -494,16 +515,17 @@ def interrupt_task_if_no_power(name, task_package):
 
     msg_power(get_message("charge", "task_interrupt", name=name, task_type=task_type), turns_elapsed)
 
-    if task["type"] == TASK_PLANTING:
-        hydro = next((r for r in resources if r["name"] == "HydroponicsRoom"), None)
+    # Add an event
+    event_priority = 4
+    task_package = add_turn_event(task_package, "charge", event_priority, name=name, result="low_power_interrupt", task_type=task_type)
 
-        if hydro:
-            for bed in hydro["beds"]:
-                if bed["reserved_by"] == name:
-                    bed["occupied"] = False
-                    bed["crop_id"] = None
-                    bed["name"] = ""
-                    bed["reserved_by"] = ""
+    if task["type"] == TASK_PLANTING:
+        from planting import return_reserved_planting
+        planting_data = tasks[task_id].get("task_data", {})
+        if planting_data:
+            task_package = return_reserved_planting(planting_data, task_package)
+        else:
+            msg_warn(get_message("plant", "seeds_not_returned", name=name),turns_elapsed)
 
     remove_task_by_id(task_id, task_package)
 

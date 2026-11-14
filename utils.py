@@ -8,6 +8,7 @@ import difflib
 from command_utils import get_pronouns, get_task_by_worker, remove_task_by_id
 from constants import (NAMES, INITIAL_GAMESTATE, CONFIG_FILE, LOG_FILE, LOG_FILE_OLD, HUNGER, NUM_HUMANS, NUM_DROIDS, HUNGER_WARNING, 
     TASK_ASSIGNED, TASK_PLANTING, TASK_EATING, TASK_REAPING, TASK_CHARGING, TASK_TOWING_DROID, FOOD_PER_DAY, FULL_DROID_CHARGE, CommandOutcome)
+from events import add_turn_event
 from lore.lore_ingame import get_message
 from lore.lore_story import print_orders
 import lore.user_interface as ui_runtime
@@ -51,6 +52,7 @@ def build_task_package(**kwargs):
         "shieldstate": {},
         "tasks": {},
         "task_data": {},
+        "turn_events": [],
         "counters": {
             "turns": 0, 
             "task": 0, 
@@ -122,8 +124,17 @@ def initialise_outpost(first_time):
             "shield_connected": False,
             "shield_active": False
         },
-        tasks={}
+        tasks={},
+        turn_events=[],
+        counters={
+            "turns": 0, 
+            "task": 0, 
+            "crop": 0, 
+            "explore": 0, 
+            "found_nil": 0,
+        },
     )
+
     null_task_package = task_package.copy()
 
     # Save after initialising
@@ -145,7 +156,7 @@ def save_config(task_package):
 
     # Copy only keys we care about from task_package
     keys_to_save = [
-        "crops", "droids", "gamestate", "humans", "item", "resources",  "shieldstate", "tasks", "task_data", "counters"
+        "crops", "droids", "gamestate", "humans", "item", "resources",  "shieldstate", "tasks", "turn_events", "counters"
     ]
 
     for key in keys_to_save:
@@ -157,11 +168,12 @@ def save_config(task_package):
 
 
 def load_config():
+    outcome = CommandOutcome.INVALID
     if os.path.exists(CONFIG_FILE):
         with open(CONFIG_FILE, 'r') as f:
             data = json.load(f)
 
-        return build_task_package(
+        task_package = build_task_package(
             crops=data.get("crops", {}),
             droids=data.get("droids", {}),
             gamestate=data.get("gamestate", INITIAL_GAMESTATE.copy()),
@@ -169,15 +181,16 @@ def load_config():
             resources=data.get("resources", []),
             shieldstate=data.get("shieldstate", {}),
             tasks=data.get("tasks", {}),
-            task_data=data.get("task_data", {}),
+            turn_events=data.get("turn_events", []),
             counters=data.get("counters", {"turns": 0, "task": 0, "crop": 0, "explore": 0, "found_nil": 0,}),
         )
+        outcome = CommandOutcome.SUCCESS
 
     else:
         first_time = True
         outcome, task_package = initialise_outpost(first_time)
 
-        return outcome, task_package
+    return outcome, task_package
 
 
 def reset_config(task_package, context):
@@ -271,6 +284,11 @@ def process_hunger_status(name, task_package, warn=True):
             if warn:
                 msg_food(get_message("hunger", "deceased", name=name), turns_elapsed, tone="warn")
             human["state"] = "Deceased"
+
+            # Add an event
+            event_priority = 1
+            task_package = add_turn_event(task_package, "eat", event_priority, result="deceased", name=name)
+
         return task_package
     
     # If they are currently eating, don't check and don't warn, just exit
@@ -286,6 +304,10 @@ def process_hunger_status(name, task_package, warn=True):
                     msg_food(get_message("hunger", f"{warning_state.lower()}_warning", 
                             pronoun1=pronouns["p1"].lower(), pronoun2=pronouns["p2"].lower(), pronoun3=pronouns["p3"].lower(), name=name),
                             turns_elapsed, tone="warn")
+                    
+                    # Add an event
+                    event_priority = 7
+                    task_package = add_turn_event(task_package, "eat", event_priority, result="hunger_warning", name=name, state=current_state)
 
     # --- NO CHANGE ---
     if new_band == current_state:
@@ -342,17 +364,15 @@ def interrupt_task_if_starving(name, human, task_package):
         msg_food(get_message("error", "starving", name=name, task_type=task_type), turns_elapsed, tone="warn")
 
         if task_type == TASK_PLANTING.lower():
-            hydro = next((r for r in resources if r["name"] == "HydroponicsRoom"), None)
-
-            if hydro:
-                for bed in hydro["beds"]:
-                    if bed.get("reserved_by", "").casefold() == name.casefold():
-                        bed["occupied"] = False
-                        bed["reserved"] = False
-                        bed["crop_id"] = None
-                        bed["reserved_by"] = ""
+            from planting import return_reserved_planting
+            planting_data = tasks[task_id].get("task_data", {})
+            task_package = return_reserved_planting(planting_data,task_package)
 
         remove_task_by_id(task_id, task_package)
+
+        # Add an event
+        event_priority = 4
+        task_package = add_turn_event(task_package, "eat", event_priority, result="starving_interrupt", name=name, task_type=task_type)
 
     human["awaiting_food"] = True
 
@@ -566,6 +586,8 @@ def set_shield_state(requirement, droids, resources, shieldstate):
 
     # Final synthesis: is the shield ACTIVE?
     s = shieldstate
+    if not s.get("shield_active"):
+        shield_previously_not_active = True
     shieldstate["shield_active"] = (
         s["shield_found"] and
         s["manual_decoded"] and
@@ -573,6 +595,14 @@ def set_shield_state(requirement, droids, resources, shieldstate):
         s["crystal_combo_valid"] and
         s["shield_connected"]
     )
+
+    # If we just activated the shield, create the all important event
+    shield_is_now_active = (s.get("shield_active") == True)
+    if shield_previously_not_active and shield_is_now_active:
+
+        # Add an event!
+        event_priority = 1
+        task_package = add_turn_event(task_package, "shield", event_priority, result="active")
 
     return shieldstate
 
@@ -597,13 +627,11 @@ def set_examine_needed_after_explore(name, item, task_package):
     # if feeding or charging is about to happen.
     humans = task_package["humans"]
     droids = task_package["droids"]
-    turns_elapsed = task_package["counters"]["turns"]
 
     is_human = name in humans
 
     if is_human:
         humans[name]["examine_needed"] = item
-        pronouns = get_pronouns(name, is_human)
     else:
         droids[name]["examine_needed"] = item
         
@@ -626,22 +654,24 @@ def days_of_food_left(resources):
     days_left = 0
 
     ration = get_food_amount(resources, "rationPack")
-    apple = get_food_amount(resources, "apple")
-    cabbage = get_food_amount(resources, "cabbage")
     potato = get_food_amount(resources, "potato")
+    onion = get_food_amount(resources, "onion")
+    apple = get_food_amount(resources, "apple")
+    avocado = get_food_amount(resources, "avocado")
 
-    days_left = (ration + apple/FOOD_PER_DAY["apple"] + cabbage/FOOD_PER_DAY["cabbage"] + potato/FOOD_PER_DAY["potato"])/NUM_HUMANS
+    days_left = (ration + potato/FOOD_PER_DAY["potato"] + onion/FOOD_PER_DAY["onion"] + apple/FOOD_PER_DAY["apple"] + avocado/FOOD_PER_DAY["avocado"])/NUM_HUMANS
 
     return days_left
 
 
 def can_provide_a_meal(resources):
     ration = get_food_amount(resources, "rationPack")
-    apple = get_food_amount(resources, "apple")
-    cabbage = get_food_amount(resources, "cabbage")
     potato = get_food_amount(resources, "potato")
+    onion = get_food_amount(resources, "onion")
+    apple = get_food_amount(resources, "apple")
+    avocado = get_food_amount(resources, "avocado")
 
-    return (ration + apple + cabbage + potato) > 0
+    return (ration + potato + onion + apple + avocado) > 0
 
 
 def get_food_amount(resources, food_type):

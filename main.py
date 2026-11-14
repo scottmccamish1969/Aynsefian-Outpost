@@ -25,7 +25,7 @@ def main():
 
     ui.set_command_callback(command_callback)
 
-    task_package = load_config()
+    outcome, task_package = load_config()
     if task_package:
         turns_elapsed = task_package["counters"]["turns"]
 
@@ -44,7 +44,7 @@ def main():
             print_commands(turns_elapsed)
 
     # Load the config again (as we might be a brand new game OR a reset) and update the screen
-    task_package = load_config()
+    outcome, task_package = load_config()
     update_screen(task_package)
 
     root.mainloop()

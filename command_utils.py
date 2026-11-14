@@ -25,10 +25,11 @@ def create_task(name, task_type, duration, task_package, task_data=None, item_na
 
     # Now display the user message
     # Need to adust for duration as the tasks will be decremented at the end of the turn.
-    if duration-1 == 1:
+    if duration == 1:
         turn_msg = "1 turn"
     else:
-        turn_msg = f"{duration-1} turns"
+        turn_msg = f"{duration} turns"
+
     if task_type == TASK_EATING:
         return_msg = get_message("feed", "commenced", person_name=name, turn_msg=turn_msg, pronoun=pronouns["p1"])
     elif task_type == TASK_CHARGING:
@@ -140,7 +141,7 @@ def remove_task_by_id(task_id, task_package):
     return task_package
 
 
-def clear_task_for_character(name, item, humans, droids):
+def clear_task_for_character(name, item, humans, droids, turns_elapsed=0):
     # Clears a character's task and item fields.
     # Character lookup is case-insensitive, while preserving the stored key.
 
@@ -164,7 +165,7 @@ def clear_task_for_character(name, item, humans, droids):
         droids[droid_name]["item"] = ""
 
     else:
-        msg_error(get_message("error", "character_not_found", name=name))
+        msg_error(get_message("error", "character_not_found", name=name), turns_elapsed)
 
     return humans, droids
 
@@ -210,6 +211,7 @@ def get_pronouns(name, is_human):
 
 def handle_read_command(task_package, turns_elapsed, subject=None):
     # If no subject specified, enter local sub-loop
+    resources = task_package["resources"]
     can_read_these = []
     if subject is None:
         # Only list files that exist or are always-available lore entries
@@ -217,6 +219,12 @@ def handle_read_command(task_package, turns_elapsed, subject=None):
             if key == "orders" or os.path.exists(filename):
                 choice = f"{key}"
                 can_read_these.append(choice)
+            elif key == "recipes":
+                can_read_recipes = False
+                if any(r.get("name") == "RecipeBooklet" for r in resources): 
+                    can_read_recipes = True
+                    if can_read_recipes:
+                        can_read_these.append("recipes")
 
         can_read_these.append('quit: read nothing')
         if ui_runtime.UI_MODE == "gui" and ui_runtime.ACTIVE_UI is not None:
@@ -231,10 +239,17 @@ def handle_read_command(task_package, turns_elapsed, subject=None):
 
         if answer and answer == ui_runtime.GUI_PENDING:
             return CommandOutcome.AWAITING_INPUT, task_package
+        
+    else:
+        context={
+            "task_package": task_package,
+        },
+        resume_read_command(subject, context)
 
 
 def resume_read_command(subject, context):
     task_package = context["task_package"]
+    resources = task_package["resources"]
     turns_elapsed = task_package["counters"]["turns"]
 
     if subject == "quit":
@@ -249,6 +264,20 @@ def resume_read_command(subject, context):
             messages = get_story_message("orders", "message")
             for line in messages:
                 log_and_display("\n" + line, turns_elapsed, log=False)  # Don't re-display this in the log
+        elif subject == "recipes":
+            if any(r.get("name") == "RecipeBooklet" for r in resources): 
+                if any(r.get("name") == "MealMaker" for r in resources): 
+                    msg_story(get_message("read", "here_it_is", subject=subject), turns_elapsed)
+                    messages = get_story_message("recipes", "message_MealMaker")
+                elif any(r.get("name") == "RecipeBooklet" for r in resources): 
+                    msg_story(get_message("read", "here_it_is", subject=subject), turns_elapsed)
+                    messages = get_story_message("recipes", "message_CampFire")
+                else:
+                    msg_info(get_message("read", "no_content", subject=subject), turns_elapsed)
+                    return CommandOutcome.INVALID, task_package
+                
+                for line in messages:
+                    log_and_display("\n" + line, turns_elapsed, log=False)  # Don't re-display this in the log
         else:
             filename = AVAILABLE_FILES[subject]
 
@@ -265,6 +294,7 @@ def resume_read_command(subject, context):
         msg_info(get_message("read", "nothing_further"), turns_elapsed)
     else:
         msg_info(get_message("read", "no_content", subject=subject), turns_elapsed)
+        return CommandOutcome.INVALID, task_package
 
     return CommandOutcome.SUCCESS, task_package
 

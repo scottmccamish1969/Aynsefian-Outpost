@@ -1,22 +1,56 @@
 #constants.py
 
 from enum import Enum, auto
+import argparse
+
+
+# === GAME MANAGEMENT ====================================================
 
 class CommandOutcome(Enum):
     AWAITING_INPUT = auto()
     CANNOT_EXECUTE = auto()
     INVALID = auto()
     SUCCESS = auto()
-    
+
+# Turn-event constants
+TURN_MESSAGE_LIMIT = 5
+AMBIENT_MSG_LIMITER = 3     # If there is more or equal space in the messaging than this number, add an ambient message
+
+ENDGAME_REASONS = {
+    "all_dead" : "All humans have sadly perished.",
+    "no_power":  "The Outpost has run out of power.",
+    "mgc_arrival_no_shield": "The MGC has arrived and there was no active shield.",
+    "mgc_arrival_shield_failed": "The MGC has arrived and the Outpost shield was inadequate.",
+    "you_win?": "The MGC has arrrived and gone again. Your shield worked. CONGRATULATIONS. You have saved Aynsefian!"
+}
+
+
+# === FILES ==============================================================
+
 # File names
-CONFIG_FILE = "outpost_config.json"
+#CONFIG_FILE = "outpost_config.json"
 LOG_FILE = "outpost_log.txt"
 LOG_FILE_OLD = "outpost_log.old"
 
 # At the moment the user can only print the initial orders
 AVAILABLE_FILES = {
-        "orders": ""
+        "orders": "",
+        "recipes": ""
 }
+
+parser = argparse.ArgumentParser()
+parser.add_argument(
+    "--config",
+    default="outpost_config.json",
+    help="Configuration file to load and save"
+)
+
+args = parser.parse_args()
+
+CONFIG_FILE = args.config
+
+
+# === CHARACTERS =========================================================
 
 # Number of humans and droids
 NUM_HUMANS = 4
@@ -38,6 +72,9 @@ GENDERS = {
     "Fen" : MALE
 }
 
+
+# === FOOD AND HUNGER ====================================================
+
 # Human hunger triggers
 HUNGER = {
     "Okay": (0, 6),
@@ -53,9 +90,58 @@ HUNGER_WARNING = {
     "NearDeath": 23,
     "Deceased": 28   
 }
+
 ONE_DAY_HUNGRY = 10
 NORMAL_MEAL_MULTIPLIER = 1.0
 EMERGENCY_MEAL_MULTIPLIER = 1.5
+
+GROWTH_TURNS = {
+    "potato": 30,
+    "onion": 40,
+    "apple": 50,
+    "avocado": 60,
+}
+
+# Default planting amounts
+SEED_PACKETS_USED = 10
+INITIAL_SEED_STASH = 100
+REAP_SEED_FRACTION = 0.3
+
+# Crop Yield Range
+YIELD_RANGE = {
+    "potato": (30, 40),
+    "onion": (30, 50),
+    "apple": (60, 80),
+    "avocado": (20, 30)
+}
+
+SEED_AMOUNT_RATIO = {
+    "potato": (0.2, 0.25),
+    "onion": (0.2, 0.25),
+    "apple": (0.3, 0.35),
+    # avocado seeds will be what is left, when calculated
+}
+
+# Serving values (food units needed to feed one person)
+SERVING_VALUE = 1
+
+# How much of each will feed 1 human for 1 day if they only consume that food
+FOOD_PER_DAY = {
+    "potato": 4,
+    "onion": 5,
+    "apple":  8,
+    "avocado": 3
+}
+
+# Ration Pack fallback
+RATION_PACKS = 20  # initial stock (5 days' worth - MUST plant)
+
+# Hydroponics bed limits
+HYDROPONICS_BED_MIN = 4
+HYDROPONICS_BED_MAX = 6
+
+
+# === POWER, CRYSTALS AND DROIDS =========================================
 
 # Charging constants
 INITIAL_CHARGE = 15000      # Enough for 15 droid charges (7.5 days for all charged, then 3 droids, then nothing - MUST then be mining crystals)
@@ -63,6 +149,28 @@ FULL_DROID_CHARGE = 1000    # The most a droid can be charged to
 IDLE_CHARGE_USAGE = 50      # 50/turn leads to 500/day, leading to 2 days per full charge
 LOW_CHARGE_FLAG = 6         # This is measured in turns (i.e. 6 turns before running out of charge - they get a warning message)
 TOW_TASK_LENGTH = 2         # How long it takes to take a droid to the power supply
+CHARGE_DURATION = 4         # No reason to make this variable
+
+
+# Mining constants - this is how many we get from a mining run (fixed for now)
+CRYSTAL_RATIO = {
+    "red" : 0.5,
+    "indigo": 0.3,
+    "gold" : 0.2
+}
+BASE_CRYSTAL_YIELD = 10
+
+POWER_PER_RED = 500
+POWER_PER_INDIGO = 800
+POWER_PER_GOLD = 1200
+
+# Assigning constants
+ASSIGN_TURNS = {
+    "CrystalProcessor": 6,
+}
+
+
+# === TASKS ==============================================================
 
 # Task names
 TASK_ASSIGNED  = "Assigned"
@@ -158,7 +266,6 @@ TASK_LENGTH = {
     "refuel_human": (2, 4),
     "refuel_droid": (2, 4)
 }
-CHARGE_DURATION = 4  # No reason to make this variable
 
 # Commands that may or may not be used
 INITIAL_GAMESTATE = {
@@ -185,74 +292,8 @@ INITIAL_GAMESTATE = {
     "endgame_reason": "null",
 }
 
-# Crop Growth Turns (+/- 10%)
-GROWTH_TURNS = {
-    "apple": 20,
-    "cabbage": 32,
-    "potato": 48
-}
 
-# Default planting amounts
-SEED_PACKETS_USED = {
-    "apple": 40,
-    "cabbage": 10,
-    "potato": 20
-}
-INITIAL_SEED_STASH = 280
-REAP_SEED_FRACTION = 0.5
-
-# Crop Yield Range
-YIELD_RANGE = {
-    "apple": (25, 40),
-    "cabbage": (4, 7),
-    "potato": (12, 21)
-}
-
-# Serving values (food units needed to feed one person)
-SERVING_VALUE = {
-    "apple": 1,
-    "cabbage": 0.25,
-    "potato": 1
-}
-
-# How much of each will feed 1 human for 1 day if they only consume that food
-FOOD_PER_DAY = {
-    "apple":  8,
-    "cabbage": 1,
-    "potato": 4
-}
-
-# Ration Pack fallback
-RATION_PACKS = 20  # initial stock (5 days' worth - MUST plant)
-
-# Hydroponics bed limits
-HYDROPONICS_BED_MIN = 4
-HYDROPONICS_BED_MAX = 6
-
-# Mining constants - this is how many we get from a mining run (fixed for now)
-CRYSTAL_RATIO = {
-    "red" : 0.5,
-    "indigo": 0.3,
-    "gold" : 0.2
-}
-BASE_CRYSTAL_YIELD = 10
-
-POWER_PER_RED = 500
-POWER_PER_INDIGO = 800
-POWER_PER_GOLD = 1200
-
-# Assigning constants
-ASSIGN_TURNS = {
-    "CrystalProcessor": 6,
-}
-
-ENDGAME_REASONS = {
-    "all_dead" : "All humans have sadly perished.",
-    "no_power":  "The Outpost has run out of power.",
-    "mgc_arrival_no_shield": "The MGC has arrived and there was no active shield.",
-    "mgc_arrival_shield_failed": "The MGC has arrived and the Outpost shield was inadequate.",
-    "you_win?": "The MGC has arrrived and gone again. Your shield worked. CONGRATULATIONS. You have saved Aynsefian!"
-}
+# === RESOURCES ==========================================================
 
 MAJOR_RESOURCES_ORDER = [
     "SeedStash",

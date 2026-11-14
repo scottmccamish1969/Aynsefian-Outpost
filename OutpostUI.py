@@ -196,9 +196,17 @@ class OutpostUI:
             "resume_turn": resume_turn,
             "continue_command_phase": continue_command_phase
         }
+        self.update_end_turn_button_state()
 
     def clear_pending_question(self):
         self.pending_question = None
+        self.update_end_turn_button_state()
+    
+    def update_end_turn_button_state(self):
+        if self.pending_question is not None:
+            self.end_turn_button.config(state="disabled")
+        else:
+            self.end_turn_button.config(state="normal")
 
     # ----------------------------------------------------------------------
     # Internal event handling
@@ -207,6 +215,7 @@ class OutpostUI:
     def on_submit(self, event=None):
         
         from constants import CommandOutcome
+        from events import finalise_and_clear_turn_events
         from turns import prepare_command_phase
         from utils import save_config, update_screen
 
@@ -236,6 +245,9 @@ class OutpostUI:
 
             if continue_command_phase:
                 outcome, updated_task_package = prepare_command_phase(updated_task_package)
+
+                if outcome == CommandOutcome.SUCCESS:
+                    updated_task_package = finalise_and_clear_turn_events(updated_task_package)
             
             save_config(updated_task_package)
             update_screen(updated_task_package)
@@ -276,19 +288,22 @@ def get_top_bar_data(task_package):
         elif r.get("name") == "FoodStore":
             food = (
                 r.get("rationPack", 0)
-                + r.get("apple", 0)
-                + r.get("cabbage", 0)
                 + r.get("potato", 0)
-                + r.get("soup", 0)
+                + r.get("onion", 0)
+                + r.get("apple", 0)
+                + r.get("avocado", 0)
                 + r.get("smoothie", 0)
+                + r.get("soup", 0)
+                + r.get("salad", 0)
                 + r.get("stirFry", 0)
             )
 
         elif r.get("name") == "SeedStash":
             seeds = (
-                r.get("apple", 0)
-                + r.get("cabbage", 0)
-                + r.get("potato", 0)
+                r.get("potato", 0)
+                + r.get("onion", 0)
+                + r.get("apple", 0)
+                + r.get("avocado", 0)
             )
 
     return {

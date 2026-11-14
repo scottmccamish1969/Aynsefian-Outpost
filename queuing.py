@@ -7,6 +7,7 @@ from constants import (TASK_EATING, TASK_CHARGING, TASK_EXPLORING, TASK_ASSIGNED
                        TASK_REAPING, TASK_TOWING_DROID, TASK_REFUELING, TASK_LENGTH, CHARGE_DURATION, LOW_CHARGE_FLAG, 
                        IDLE_CHARGE_USAGE, TOW_TASK_LENGTH, NORMAL_MEAL_MULTIPLIER, EMERGENCY_MEAL_MULTIPLIER, ONE_DAY_HUNGRY,
                        CommandOutcome)
+from events import add_turn_event
 from lore.lore_ingame import get_message
 import lore.user_interface as ui_runtime
 from lore.user_interface import msg_food, msg_power, msg_error,  msg_info, msg_explore, msg_mine, msg_plant, msg_resource
@@ -200,7 +201,10 @@ def resume_delayed_examine_processing(answer, context):
         restart_examine(name, task_package, item_name=item_to_examine)
     else:
         msg_resource(get_message("examine", "aborted", target=name, item=item_to_examine), turns_elapsed)
-        # From here, they should just pick up the next queued task. We'll see.
+
+        # Add an event for this
+        event_priority = 9
+        task_package = add_turn_event(task_package, "examine", event_priority, name=name, result="aborted")
 
     # Either way, clear the flag
     task_package = clear_examine_needed_flag(name, task_package)
@@ -272,10 +276,14 @@ def feed_hungry_human(name, task_package):
         task_length_key = ("feed_human_emergency" if multiplier == EMERGENCY_MEAL_MULTIPLIER else "feed_human")
         low, high = TASK_LENGTH[task_length_key]
         duration = random.randint(low, high)
-        task_type = TASK_EATING
         humans[name]["awaiting_food"] = False
         humans[name]["food_wait_declined"] = False
-        return_msg, task_package = create_task(name, task_type, duration, task_package, task_data=task_data)
+        return_msg, task_package = create_task(name, TASK_EATING, duration, task_package, task_data=task_data)
+
+        # Add the turn event
+        event_priority = (3 if multiplier == EMERGENCY_MEAL_MULTIPLIER else 6)
+        meal_urgency = ("urgent" if multiplier == EMERGENCY_MEAL_MULTIPLIER else "normal")
+        task_package = add_turn_event(task_package, "eat", event_priority, name=name, result="started", meal_urgency=meal_urgency)
 
         pronouns = get_pronouns(name, is_human=True)
         if duration-1 == 1:
@@ -285,7 +293,7 @@ def feed_hungry_human(name, task_package):
         return_msg = get_message("queue", "auto_food", name=name, pronoun1=pronouns["p3"].lower(), pronoun2=pronouns["p1"], turn_msg=turn_msg)
         
         item_name = ""
-        set_task_status_for_character(name, task_type, item_name, humans, droids, task_package["counters"]["turns"])
+        set_task_status_for_character(name, TASK_EATING, item_name, humans, droids, task_package["counters"]["turns"])
 
     msg_food(return_msg, turns_elapsed, stamp=False)
     return task_package
@@ -293,7 +301,6 @@ def feed_hungry_human(name, task_package):
 
 def restart_examine(name, task_package, item_name=""):
     # Restart the examine task if it was previously paused (to eat or charge)
-    task_type = TASK_EXAMINING
     resources = task_package["resources"]
     humans = task_package["humans"]
     turns_elapsed = task_package["counters"]["turns"]
@@ -315,8 +322,12 @@ def restart_examine(name, task_package, item_name=""):
         duration = item.get("examine_turns", 0) + set_task_length("examine_droid")
 
     # Create the task
-    return_msg, task_package = create_task(name, task_type, duration, task_package, item_name=item_name)
+    return_msg, task_package = create_task(name, TASK_EXAMINING, duration, task_package, item_name=item_name)
     msg_resource(return_msg, turns_elapsed)
+
+    # Add a turn event
+    event_priority = 8
+    task_package = add_turn_event(task_package, "examine", event_priority, name=name, result="started", item=item_name)
 
     # Clear the flag
     task_package = clear_examine_needed_flag(name,task_package)

@@ -1,6 +1,7 @@
 # commands.py
 
 import random
+from unicodedata import name
 
 from command_utils import (create_task, is_droid_being_charged_or_towed, get_refuel_power_supply_and_vials, 
                            remove_vials_from_store, calculate_refuel_power, get_refuel_days, get_pronouns, 
@@ -10,6 +11,7 @@ from constants import (TASK_CHARGING, TASK_EXPLORING, TASK_PLANTING, TASK_REAPIN
                        LOW_CHARGE_FLAG, IDLE_CHARGE_USAGE, POWER_PER_RED, POWER_PER_INDIGO, POWER_PER_GOLD, NUM_DROIDS,
                        FULL_DROID_CHARGE, TOW_TASK_LENGTH, COMMAND_MAP, CommandOutcome, NORMAL_MEAL_MULTIPLIER, 
                        EMERGENCY_MEAL_MULTIPLIER, ONE_DAY_HUNGRY)
+from events import add_turn_event
 from lore.lore_ingame import get_message
 import lore.user_interface as ui_runtime
 from lore.user_interface import (get_input, msg_plant, msg_explore, msg_power, msg_crystal, msg_resource, msg_mine, msg_info,
@@ -162,12 +164,11 @@ def initiate_feed_task(qualifier, task_package):
     humans = task_package["humans"]
     droids = task_package["droids"]
     turns_elapsed = task_package["counters"]["turns"]
-    task_type = TASK_EATING
     task_data = {}
     multiplier = NORMAL_MEAL_MULTIPLIER
     hunger_reduction = 0
 
-    feed_targets = parse_command_targets(qualifier, task_type, task_package)
+    feed_targets = parse_command_targets(qualifier, TASK_EATING, task_package)
 
     if feed_targets == ui_runtime.GUI_PENDING:
         return CommandOutcome.AWAITING_INPUT, task_package
@@ -205,7 +206,7 @@ def initiate_feed_task(qualifier, task_package):
             if not is_idle(name, humans, droids):
                 humans[name]["awaiting_food"] = False
                 humans[name]["food_wait_declined"] = False
-                humans, droids = add_to_queue(name, humans, droids, turns_elapsed, task_type, task_data=task_data)
+                humans, droids = add_to_queue(name, humans, droids, turns_elapsed, TASK_EATING, task_data=task_data)
                 continue
 
             # Clear the flags - food is now reserved for them
@@ -213,9 +214,13 @@ def initiate_feed_task(qualifier, task_package):
             humans[name]["food_wait_declined"] = False
 
             # Create the task
-            return_msg, task_package = create_task(name, task_type, duration, task_package, task_data=task_data)
-            
+            return_msg, task_package = create_task(name, TASK_EATING, duration, task_package, task_data=task_data)
             msg_food(return_msg, turns_elapsed)
+
+            # Add the event
+            event_priority = (3 if multiplier == EMERGENCY_MEAL_MULTIPLIER else 6)
+            meal_urgency = ("urgent" if multiplier == EMERGENCY_MEAL_MULTIPLIER else "normal")
+            task_package = add_turn_event(task_package, "eat", event_priority, name=name, result="started", meal_urgency=meal_urgency)
 
         return CommandOutcome.SUCCESS, task_package
 
@@ -238,12 +243,17 @@ def initiate_feed_task(qualifier, task_package):
 
             # If they are not idle, add this action to their queue
             if not is_idle(name, humans, droids):
-                humans, droids = add_to_queue(name, humans, droids, turns_elapsed, task_type, task_data=task_data)
+                humans, droids = add_to_queue(name, humans, droids, turns_elapsed, TASK_EATING, task_data=task_data)
                 continue
 
             # Else if they *are* idle, create the task
-            return_msg, task_package = create_task(name, task_type, duration, task_package, task_data=task_data)
+            return_msg, task_package = create_task(name, TASK_EATING, duration, task_package, task_data=task_data)
             msg_food(return_msg, turns_elapsed)
+
+            # Add the event
+            event_priority = (3 if multiplier == EMERGENCY_MEAL_MULTIPLIER else 6)
+            meal_urgency = ("urgent" if multiplier == EMERGENCY_MEAL_MULTIPLIER else "normal")
+            task_package = add_turn_event(task_package, "eat", event_priority, name=name, result="started", meal_urgency=meal_urgency)
             
         return CommandOutcome.SUCCESS, task_package
 
@@ -263,17 +273,24 @@ def initiate_feed_task(qualifier, task_package):
 
         # If they are not idle, add this action to their queue
         if not is_idle(name, humans, droids) and name in humans:
-            humans, droids = add_to_queue(name, humans, droids, turns_elapsed, task_type, task_data=task_data)
+            humans, droids = add_to_queue(name, humans, droids, turns_elapsed, TASK_EATING, task_data=task_data)
             continue
 
         # Else if they *are* idle, create the task
         is_human = name in humans
         if is_human:
-            return_msg, task_package = create_task(name, task_type, duration, task_package, task_data=task_data)
+            return_msg, task_package = create_task(name, TASK_EATING, duration, task_package, task_data=task_data)
             msg_food(return_msg, turns_elapsed)
+
+            # Add the event
+            event_priority = (3 if multiplier == EMERGENCY_MEAL_MULTIPLIER else 6)
+            meal_urgency = ("urgent" if multiplier == EMERGENCY_MEAL_MULTIPLIER else "normal")
+            task_package = add_turn_event(task_package, "eat", event_priority, name=name, result="started", meal_urgency=meal_urgency)
+
         elif name in droids:
             msg_food(get_message("feed_droid", "responses", droid_name=name), turns_elapsed, tone="error")
             return CommandOutcome.CANNOT_EXECUTE, task_package
+        
         else:
             msg_error(get_message("error", "feed_invalid", person_name=raw_target), turns_elapsed)
             return CommandOutcome.INVALID, task_package
@@ -294,6 +311,11 @@ def initiate_charge_task(qualifier, task_package):
 
     if power_resource["amount"] < 100:
         msg_power(get_message("charge", "not_enough_power"), turns_elapsed, tone="error")
+
+        if not qualifier:   # In other words, this is an auto-charge, and the player needs to be made aware of the issue.
+            # Add the event
+            event_priority = 1
+            task_package = add_turn_event(task_package, "charge", event_priority, name=name, result="no_power")
         return CommandOutcome.CANNOT_EXECUTE, task_package
 
     charge_targets = parse_command_targets(qualifier, task_type, task_package)
@@ -362,6 +384,9 @@ def process_charge_targets(charge_targets, qualifier, task_package):
 
             if not idle_humans:
                 msg_power(get_message("charge", "droid_needs_towing", name=name), turns_elapsed, tone="warn")
+                # Add the event
+                event_priority = 4
+                task_package = add_turn_event(task_package, "tow", event_priority, name=name, result="no_idle_humans")
                 continue
 
             remaining_charge_targets = charge_targets[index + 1:]
@@ -397,6 +422,10 @@ def process_charge_targets(charge_targets, qualifier, task_package):
             continue
 
         return_msg, task_package = create_task(name, TASK_CHARGING, CHARGE_DURATION, task_package, task_data=task_data)
+        
+        # Add the event
+        event_priority = 6
+        task_package = add_turn_event(task_package, "charge", event_priority, name=name, result="started", reserved_power=power_required)
 
         outcome, task_package = try_start_charge_task(name, task_package)
         if outcome == CommandOutcome.SUCCESS:
@@ -473,6 +502,10 @@ def continue_tow_command(answer, context):
 
     msg_power(return_msg, turns_elapsed)
 
+    # Add the event
+    event_priority = 4
+    task_package = add_turn_event(task_package, "tow", event_priority, name=human_to_tow, droid_towed=droid_needing_tow, result="started")
+
     # Carry on with other targets in a broad command such as "charge low".
     # The towing task itself already counts as a successful action.
     if remaining_charge_targets:
@@ -489,10 +522,9 @@ def initiate_explore_task(qualifier, task_package):
     humans = task_package["humans"]
     droids = task_package["droids"]
     turns_elapsed = task_package["counters"]["turns"]
-    task_type = TASK_EXPLORING
     is_human = qualifier in humans
 
-    explore_targets = parse_command_targets(qualifier, task_type, task_package)
+    explore_targets = parse_command_targets(qualifier, TASK_EXPLORING, task_package)
 
     if explore_targets == ui_runtime.GUI_PENDING:
         return CommandOutcome.AWAITING_INPUT, task_package
@@ -507,7 +539,7 @@ def initiate_explore_task(qualifier, task_package):
 
         # If they are not idle, add this action to their queue
         if not is_idle(name, humans, droids):
-            humans, droids = add_to_queue(name, humans, droids, turns_elapsed, task_type)
+            humans, droids = add_to_queue(name, humans, droids, turns_elapsed, TASK_EXPLORING)
             continue
 
         if is_human:
@@ -516,8 +548,12 @@ def initiate_explore_task(qualifier, task_package):
             duration = set_task_length("explore_droid")
 
         # Create the task
-        return_msg, task_package = create_task(name, task_type, duration, task_package)
+        return_msg, task_package = create_task(name, TASK_EXPLORING, duration, task_package)
         msg_explore(return_msg, turns_elapsed)
+        
+        # Add the event
+        event_priority = 8
+        task_package = add_turn_event(task_package, "explore", event_priority, name=name, result="started")
 
     return CommandOutcome.SUCCESS, task_package
 
@@ -554,11 +590,10 @@ def initiate_examine_task(qualifier, task_package, item_name=""):
     turns_elapsed = task_package["counters"]["turns"]
 
     raw_examiner = qualifier
-    task_type = TASK_EXAMINING
     awaiting_input = False
 
     # Get the examiner
-    name_list = parse_command_targets(raw_examiner, task_type, task_package)
+    name_list = parse_command_targets(raw_examiner, TASK_EXAMINING, task_package)
 
     if name_list == ui_runtime.GUI_PENDING:
         return CommandOutcome.AWAITING_INPUT, task_package
@@ -607,20 +642,23 @@ def initiate_examine_task(qualifier, task_package, item_name=""):
 
     # Busy character: queue the examination
     if not is_idle(name, humans, droids):
-        humans, droids = add_to_queue(name, humans, droids, turns_elapsed, task_type, item=item_name)
+        humans, droids = add_to_queue(name, humans, droids, turns_elapsed, TASK_EXAMINING, item=item_name)
         return CommandOutcome.SUCCESS, task_package
 
     # Items with no examination duration are examined immediately
     if item.get("examine_turns", 0) <= 0:
         new_msg = item["msg"].format(name=name,
             R=item.get("red", ""), I=item.get("indigo", ""), G=item.get("gold", ""),
-            A=item.get("apple", ""), C=item.get("cabbage", ""), P=item.get("potato", ""), amount=item.get("amount", ""))
+            P=item.get("potato", ""), O=item.get("onion", ""), A=item.get("apple", ""), V=item.get("avocado", ""),  amount=item.get("amount", ""))
         formatted_msg = f"{item_name}: {new_msg}"
         msg_resource(formatted_msg, turns_elapsed)
 
         item["examined"] = True
         item["msg"] = new_msg
 
+        # Add the event
+        event_priority = 8
+        task_package = add_turn_event(task_package, "examine", event_priority, name=name, result="started")
         return CommandOutcome.SUCCESS, task_package
 
     # Set examination duration. Droids are quicker.
@@ -630,8 +668,12 @@ def initiate_examine_task(qualifier, task_package, item_name=""):
         duration = (item.get("examine_turns", 0) + set_task_length("examine_droid"))
 
     # Create the examination task
-    return_msg, task_package = create_task(name, task_type, duration, task_package, item=item_name)
+    return_msg, task_package = create_task(name, TASK_EXAMINING, duration, task_package, item=item_name)
     msg_resource(return_msg, turns_elapsed)
+        
+    # Add the event
+    event_priority = 8
+    task_package = add_turn_event(task_package, "examine", event_priority, name=name, result="started")
 
     return CommandOutcome.SUCCESS, task_package
 
@@ -642,10 +684,9 @@ def initiate_reap_task(raw_target, task_package):
     droids = task_package["droids"]
     turns_elapsed = task_package["counters"]["turns"]
     crops = task_package["crops"]
-    task_type = TASK_REAPING
     
     # Get target, either from qualifier or prompt
-    reap_targets = parse_command_targets(raw_target, task_type, task_package)
+    reap_targets = parse_command_targets(raw_target, TASK_REAPING, task_package)
     if reap_targets == ui_runtime.GUI_PENDING:
         return CommandOutcome.AWAITING_INPUT, task_package
 
@@ -669,7 +710,7 @@ def initiate_reap_task(raw_target, task_package):
 
     # If they are not idle, add this action to their queue
     if not is_idle(name, humans, droids):
-        humans, droids = add_to_queue(name, humans, droids, turns_elapsed, task_type)
+        humans, droids = add_to_queue(name, humans, droids, turns_elapsed, TASK_REAPING)
         return CommandOutcome.SUCCESS, task_package
 
     # Now create the reap task
@@ -678,9 +719,13 @@ def initiate_reap_task(raw_target, task_package):
         duration = set_task_length("reap_droid")
         
     # Create the task
-    return_msg, task_package = create_task(name, task_type, duration, task_package)
+    return_msg, task_package = create_task(name, TASK_REAPING, duration, task_package)
     msg_plant(return_msg, turns_elapsed)
     
+    # Add the event
+    event_priority = 5
+    task_package = add_turn_event(task_package, "reap", event_priority, name=name, result="started")
+
     return CommandOutcome.SUCCESS, task_package
 
 
@@ -690,9 +735,8 @@ def initiate_mine_task(qualifier, task_package):
     droids = task_package["droids"]
     resources = task_package["resources"]
     turns_elapsed = task_package["counters"]["turns"]
-    task_type = TASK_MINING
 
-    mine_targets = parse_command_targets(qualifier, task_type, task_package)
+    mine_targets = parse_command_targets(qualifier, TASK_MINING, task_package)
 
     if mine_targets == ui_runtime.GUI_PENDING:
         return CommandOutcome.AWAITING_INPUT, task_package
@@ -717,15 +761,19 @@ def initiate_mine_task(qualifier, task_package):
 
         # If they are not idle, add this action to their queue
         if not is_idle(name, humans, droids):
-            humans, droids = add_to_queue(name, humans, droids, turns_elapsed, task_type)
+            humans, droids = add_to_queue(name, humans, droids, turns_elapsed, TASK_MINING)
             continue  # Skip to the next character
 
         # Assign mining task
         duration = set_task_length("mine_human") if is_human else set_task_length("mine_droid")
 
         # Create the task
-        return_msg, task_package = create_task(name, task_type, duration, task_package)
+        return_msg, task_package = create_task(name, TASK_MINING, duration, task_package)
         msg_mine(return_msg, turns_elapsed)
+
+        # Add the event
+        event_priority = 4
+        task_package = add_turn_event(task_package, "mine", event_priority, name=name, result="started")
 
     return CommandOutcome.SUCCESS, task_package
 
@@ -736,7 +784,6 @@ def initiate_refuel_task(raw_target, task_package, task_data=None):
     droids = task_package["droids"]
     resources = task_package["resources"]
     turns_elapsed = task_package["counters"]["turns"]
-    task_type = TASK_REFUELING
 
     # If task_data is provided, we are resuming a queued refuel task,
     # otherwise we are initiating a new refuel task.
@@ -760,7 +807,7 @@ def initiate_refuel_task(raw_target, task_package, task_data=None):
     elif task_data is None:
         task_data = {}
 
-    refuel_target = parse_command_targets(raw_target, task_type, task_package)
+    refuel_target = parse_command_targets(raw_target, TASK_REFUELING, task_package)
 
     if refuel_target == ui_runtime.GUI_PENDING:
         return CommandOutcome.AWAITING_INPUT, task_package
@@ -1061,8 +1108,6 @@ def finish_initiate_refuel_task(context):
     droids = task_package["droids"]
     turns_elapsed = task_package["counters"]["turns"]
 
-    task_type = TASK_REFUELING
-
     red = context.get("red", 0)
     indigo = context.get("indigo", 0)
     gold = context.get("gold", 0)
@@ -1081,24 +1126,26 @@ def finish_initiate_refuel_task(context):
     }
 
     if context.get("selection_mode", "") == "all":
-        msg_power(
-            f"{name} will now proceed to use all available vials to refuel the PowerSupply "
-            f"and add an extra {total_power} units and {num_days} days' worth of droid charges.", turns_elapsed)
+        msg_power(f"{name} will now proceed to use all available vials to refuel the PowerSupply "
+                  f"and add an extra {total_power} units and {num_days} days' worth of droid charges.", turns_elapsed)
     else:
-        msg_power(
-            f"{name} is now going to refuel the PowerSupply with only the amounts you have chosen. "
-            f"This will add {total_power} units of power to the system. "
-            f"Enough to charge a single droid for {num_days} days.", turns_elapsed)
+        msg_power(f"{name} is now going to refuel the PowerSupply with only the amounts you have chosen. "
+                  f"This will add {total_power} units of power to the system. "
+                  f"Enough to charge a single droid for {num_days} days.", turns_elapsed)
 
     if not is_idle(name, humans, droids):
-        humans, droids = add_to_queue(name, humans, droids, turns_elapsed, task_type, task_data=task_data)
+        humans, droids = add_to_queue(name, humans, droids, turns_elapsed, TASK_REFUELING, task_data=task_data)
         return CommandOutcome.SUCCESS, task_package
 
     key = "refuel_human" if is_human else "refuel_droid"
     duration = set_task_length(key)
 
-    return_msg, task_package = create_task(name, task_type, duration, task_package, task_data=task_data, item_name="PowerSupply")
+    return_msg, task_package = create_task(name, TASK_REFUELING, duration, task_package, task_data=task_data, item_name="PowerSupply")
     msg_power(return_msg, turns_elapsed)
+
+    # Add the event
+    event_priority = 5
+    task_package = add_turn_event(task_package, "refuel", event_priority, name=name, result="started", red=red, indigo=indigo, gold=gold, total_power=total_power)
 
     return CommandOutcome.SUCCESS, task_package
 
@@ -1453,7 +1500,6 @@ def finish_assign_process_task(context, task_data=None):
     droids = task_package["droids"]
     turns_elapsed = task_package["counters"]["turns"]
 
-    task_type = TASK_ASSIGNED
     item_name = "CrystalProcessor"
     is_human = name in humans
     red = indigo = gold = 0
@@ -1493,15 +1539,19 @@ def finish_assign_process_task(context, task_data=None):
 
         # If they are not idle, add this action to their queue
         if not is_idle(name, humans, droids):
-            humans, droids = add_to_queue(name, humans, droids, turns_elapsed, task_type, item=item_name, task_data=task_data)
+            humans, droids = add_to_queue(name, humans, droids, turns_elapsed, TASK_ASSIGNED, item=item_name, task_data=task_data)
             return CommandOutcome.SUCCESS, task_package
 
         task_package["item"] = item_name
         task_package["task_data"] = task_data
 
     # Create the task
-    return_msg, task_package = create_task(name, task_type, duration, task_package, task_data=task_data, item_name=item_name)
+    return_msg, task_package = create_task(name, TASK_ASSIGNED, duration, task_package, task_data=task_data, item_name=item_name)
     msg_crystal(return_msg, turns_elapsed)
+
+    # Add the event
+    event_priority = 4
+    task_package = add_turn_event(task_package, "assign", event_priority, name=name, result="started", item=item_name, red=red, indigo=indigo, gold=gold)
 
     return CommandOutcome.SUCCESS, task_package
 
@@ -1512,7 +1562,6 @@ def initiate_assign_shieldmanual_task(name, task_package):
     droids = task_package["droids"]
     resources = task_package["resources"]
     turns_elapsed = task_package["counters"]["turns"]
-    task_type = TASK_ASSIGNED
     item_name = "ShieldManual"
     outcome = None
 
@@ -1524,7 +1573,7 @@ def initiate_assign_shieldmanual_task(name, task_package):
     
     # If they are not idle, add this action to their queue
     if not is_idle(name, humans, droids):
-        humans, droids = add_to_queue(name, humans, droids, turns_elapsed, task_type, item=item_name)
+        humans, droids = add_to_queue(name, humans, droids, turns_elapsed, TASK_ASSIGNED, item=item_name)
         return CommandOutcome.SUCCESS, task_package
 
     # ---- Create task ----
@@ -1536,8 +1585,12 @@ def initiate_assign_shieldmanual_task(name, task_package):
         duration = set_task_length("assign_droid_manual")
 
     # Create the task
-    return_msg, task_package = create_task(name, task_type, duration, task_package, item_name=item_name)
+    return_msg, task_package = create_task(name, TASK_ASSIGNED, duration, task_package, item_name=item_name)
     msg_shield(return_msg, turns_elapsed)
+       
+    # Add the event
+    event_priority = 5
+    task_package = add_turn_event(task_package, "shield", event_priority, name=name, result="started", item="ShieldManual")
     
     return CommandOutcome.SUCCESS, task_package
 
@@ -1568,11 +1621,23 @@ def check_shield_assign(name, task_package):
                 set_task_status_for_character(name, task_type, item_name, humans, droids, task_package["counters"]["turns"])
                 shieldstate = set_shield_state("C", droids, resources, shieldstate)
                 droids[name]["charge"] = FULL_DROID_CHARGE  # When they are connected they have full charge
+                
+            # Add the event
+            event_priority = 2
+            task_package = add_turn_event(task_package, "shield", event_priority, name=name, result="assigned", item="CloakingShield")
         else:
             msg_shield(get_message("shield", "code_not_found", name=name), turns_elapsed, tone="warn")
+            
+            # Add the event
+            event_priority = 3
+            task_package = add_turn_event(task_package, "shield", event_priority, name=name, result="code_not_found", item="CloakingShield")
 
     else:
         msg_shield(get_message("shield", "cannot_assign_human", target=name), turns_elapsed, tone="warn")
+            
+        # Add the event
+        event_priority = 3
+        task_package = add_turn_event(task_package, "shield", event_priority, name=name, result="cannot_assign_human", item="CloakingShield")
       
     return CommandOutcome.SUCCESS, task_package
 
@@ -1602,10 +1667,18 @@ def enter_oldterminal_commands(name, current_assignee, task_package):
 
     if not crystal_combo:
         msg_shield(get_message("shield", "need_combo", name=name), turns_elapsed, tone="warn")
+
+        # Add an event for this
+        event_priority = 3
+        task_package = add_turn_event(task_package, "shield", event_priority, name=name, result="terminal_unreadable", item="ShieldManual")
         return CommandOutcome.CANNOT_EXECUTE, task_package
 
     if not crystal_combo.get("examined", False):
         msg_shield(get_message("shield", "combo_not_examined", name=name), turns_elapsed, tone="warn")
+
+        # Add an event for this
+        event_priority = 3
+        task_package = add_turn_event(task_package, "shield", event_priority, name=name, result="combo_not_examined", item="ShieldManual")
         return CommandOutcome.CANNOT_EXECUTE, task_package
 
     # Offer to use the combination
@@ -1665,11 +1738,19 @@ def resume_enter_old_terminal_commands(answer, context):
                                     need_R=crystal_combo["red"], need_I=crystal_combo["indigo"], need_G=crystal_combo["gold"], 
                                     have_R=available_crystals.get("red",0), have_I=available_crystals.get("indigo",0), have_G=available_crystals.get("gold",0)),
                                     turns_elapsed, tone="warn")
+            
+            #Add an event for this
+            event_priority = 3
+            task_package = add_turn_event(task_package, "shield", event_priority, name=name, result="not_enough_crystals", item="OldTerminal", red=crystal_combo["red"], indigo=crystal_combo["indigo"], gold=crystal_combo["gold"])
             return CommandOutcome.CANNOT_EXECUTE, task_package
     
         # All good, so send the message to the player
         msg_shield(get_message("shield", "combo_correct", name=name), turns_elapsed, tone="success")
         shieldstate = set_shield_state("D", droids, resources, shieldstate)
+
+        # Create an event
+        event_priority = 2
+        task_package = add_turn_event(task_package, "shield", event_priority, name=name, result="combo_correct", item=item_name, red=crystal_combo["red"], indigo=crystal_combo["indigo"], gold=crystal_combo["gold"])
 
         # Remove the crystals from the crystal store
         power_supply = next((r for r in resources if r["name"] == "PowerSupply"), None)
@@ -1686,6 +1767,10 @@ def resume_enter_old_terminal_commands(answer, context):
     else:
         # A human cannot be assigned, but they don't know this - although they will after THIS message!
         msg_shield(get_message("shield", "terminal_cannot_assign_human", target=name), turns_elapsed, tone="warn")
+
+        # Create an event
+        event_priority = 3
+        task_package = add_turn_event(task_package, "shield", event_priority, name=name, result="terminal_cannot_assign_human", item=item_name)
         
     # Unassign previous assignee, if any
     if current_assignee and current_assignee != name:   # i.e. not a reassign
@@ -1758,7 +1843,6 @@ def resume_examine_task(answer, context):
     droids = task_package["droids"]
     turns_elapsed = task_package["counters"]["turns"]
     item_name = ""
-    task_type = TASK_EXAMINING
 
     if not answer.isdigit():
         msg_error(get_message("examine", "invalid_choice"), turns_elapsed)
@@ -1768,6 +1852,10 @@ def resume_examine_task(answer, context):
         answer = int(answer)
     if answer and answer == 0:
         msg_resource(get_message("examine", "not_doing", target=name), turns_elapsed)
+
+        # Add an event for this
+        event_priority = 9
+        task_package = add_turn_event(task_package, "examine", event_priority, name=name, result="aborted")
         return CommandOutcome.CANNOT_EXECUTE, task_package
     
     elif answer and 1 <= answer <= len(examinable_items):
@@ -1786,13 +1874,13 @@ def resume_examine_task(answer, context):
 
     # If they are not idle, add this action to their queue
     if not is_idle(name, humans, droids):
-        humans, droids = add_to_queue(name, humans, droids, turns_elapsed, task_type, item=item_name)
+        humans, droids = add_to_queue(name, humans, droids, turns_elapsed, TASK_EXAMINING, item=item_name)
         return CommandOutcome.SUCCESS, task_package
 
     # Immediate?
     if item.get("examine_turns", 0) <= 0:
         new_msg = item["msg"].format(name=name, R=item.get("red", ""), I=item.get("indigo", ""), G=item.get("gold", ""),
-                A=item.get("apple",""), C=item.get("cabbage",""), P=item.get("potato",""),  amount=item.get("amount", ""))
+                P=item.get("potato", ""), O=item.get("onion", ""), A=item.get("apple", ""), V=item.get("avocado", ""),  amount=item.get("amount", ""))
         formatted_msg = f"{item_name}: " + new_msg
         msg_resource(formatted_msg, turns_elapsed)
         item["examined"] = True
@@ -1804,6 +1892,10 @@ def resume_examine_task(answer, context):
         humans, droids = clear_task_for_character(current_examiner, item_name, humans, droids)
         msg_resource(get_message("examine", "reassigned", item=item_name, previous=current_examiner, new=name), turns_elapsed)
 
+        # Add an event for this
+        event_priority = 7
+        task_package = add_turn_event(task_package, "examine", event_priority, name=name, result="reassigned", item=item_name, previous=current_examiner)
+
     # Set the examine time, which is *quicker* for droids
     if is_human:
         duration = item.get("examine_turns", 0) + set_task_length("examine_human")
@@ -1811,12 +1903,8 @@ def resume_examine_task(answer, context):
         duration = item.get("examine_turns", 0) + set_task_length("examine_droid")
 
     # Create the task
-    return_msg, task_package = create_task(name, task_type, duration, task_package, item_name=item_name)
+    return_msg, task_package = create_task(name, TASK_EXAMINING, duration, task_package, item_name=item_name)
     msg_resource(return_msg, turns_elapsed)
-    
-    # The question is now resolved, so the suspended turn may continue.
-    task_package["gamestate"]["turn_suspended"] = False
-    save_config(task_package)
 
     return CommandOutcome.SUCCESS, task_package
 

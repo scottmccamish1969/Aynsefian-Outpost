@@ -54,9 +54,9 @@ def get_input(category, code, turns_elapsed=0, end=None, **kwargs):
         },
         "plant": {
             "who_plants": "Let's plant some real food! Who are you giving the trowel and some seeds to? <name>",
-            "default": "You have at least 3 beds available, would you like the default plant (1 apple, 1 cabbage, 1 potato)? (y/n)",
+            "default": "You have enough beds available, would you like the default plant (1 potato, 1 onion, 1 apple, 1 avocado)? (y/n)",
             "how_many": "Okay, how many beds do you wish to use (1 up to {available}, or 0 to abort)?",
-            "which_crop": "Which crop do you want in those beds? (apple, cabbage, potato)",
+            "which_crop": "Which crop would you like to plant in bed {bed_number} of {num_beds}? (potato/onion/apple/avocado)",
         },
         "replace": {
             "with_what": "{name} is currently {task_name}. What should they be doing instead? (task name, or 0 to exit without changing anything)",
@@ -99,7 +99,7 @@ def get_input(category, code, turns_elapsed=0, end=None, **kwargs):
             "who_plants": "Who should do the planting? <name>",
             "default": "Would you like the default plant? (y/n)",
             "how_many": "How many beds? (1 up to {available}, 0 to abort)?",
-            "which_crop": "Which crop do you want in those beds? (apple, cabbage, potato)",
+            "which_crop": "Which crop do you want in bed {bed_number} (potato, onion, apple, avocado)",
         },
         "replace": {
             "with_what": "What should {name} be doing instead? (task name, or 0 to abort)",

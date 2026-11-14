@@ -7,7 +7,7 @@ import json
 import lore.user_interface as ui_runtime
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 
-from constants import INITIAL_GAMESTATE, CONFIG_FILE
+from constants import INITIAL_GAMESTATE, CONFIG_FILE, CommandOutcome
 from lore.lore_ingame import print_commands
 from lore.user_interface import msg_story, get_input
 
@@ -39,7 +39,7 @@ def resume_printing_orders(answer, context):
         except (FileNotFoundError, json.JSONDecodeError):
             data = {}
 
-        keys_to_save = ["crops", "droids", "gamestate", "humans", "item", "resources",  "shieldstate", "tasks", "task_data", "counters"]
+        keys_to_save = ["crops", "droids", "gamestate", "humans", "item", "resources",  "shieldstate", "tasks", "turn_events", "counters"]
 
         for key in keys_to_save:
             if key in task_package:
@@ -71,14 +71,44 @@ def resume_printing_orders(answer, context):
     
     local_save_config(task_package)
 
+    return CommandOutcome.SUCCESS, task_package
+
 
 # The core of the lore
 def get_story_message(category, code, **kwargs):
     messages = {
-    "daymessage": {
+        "ambient": {
+            "generic": [
+                "The wind appears to be blowing particularly strongly outside the cave entrance today. You wonder if the planet is sensing something brewing in its interior.",
+                "You hope that, once the Shield is up and working, you can find time to explore the cave. It is nearly five hundred kilometres in length, with its own atmosphere and ecosystems.",
+                "Arlyss and Cindlyss suggest via the comms that you look for some of the coloured moss that was found at the alternate entrance to the cave. You have no idea what this moss might be, or why it is important.",
+                "Salvation has apparently now been taught to fetch and retrieve things, according to the comms line from the main city. Not sure that information helps a whole lot.",
+                "Droids have long been useful in Inconflencia society, for many things. There are entire industries built around them, and their positive effects on humans.",
+                "The MGC has a long and dark history in this corner of the universe. However many neighbouring galaxies have never heard of them, and this is not a good thing if intergalactic travel is on the cards.",
+                "First Lady Zarasena tells of rigid and demanding merit selection processes for captains and crew on the MGC Retrieval Line. If you don't die during basic training, she says, you've passed.",
+                "Axin Fernea never wanted to be President, apparently. He discovered Aynsefian through sheer force of will, and the Inconflencia Government thought it only fitting to reward him for his perseverance.",
+                "Chief Engineer Jinekali can fix almost anything, according to his wife Anathusa. 'Except for my hair', she says. 'He refuses to even try'.",
+                "The Melcheisa Galaxy is vastly bigger than the Hynetherine Galaxy, its nearby neighbour and the home of Axin's planet of origin, Inconflencia. However, Aynsefian (the planet) lies just outside of both of them.",
+                "The time to rest is not now. Everyone senses it. Movement is purposeful, and mild anxiety is ever present beneath the actions of all.",
+                "Rumors are that Lanemu An Fehr, the spiritual advisor to Aynsefian, engineered a remarkable split-timeline escape from the MGC, to ensure Axin, Zarasena and the rest of the crew made it safely to Aysefian.",
+                "The planterary surface of Aynsefian (the planet, rather than the city) is brutal. Constant wind, below freezing temperatures, and a complete lack of water, make it uninhabitable. Its caves are another matter altogether.",
+                "The central sun inside the Aynsefian cave system is an astonishing feat of engineering that occurred so far back in time that even the most recent civilisation (prior to the current one) has no idea who built it.",
+                "Axin Fernea was just a regular guy back on Inconflencia, who volunteered to do a thankless task of scouring the galaxies for a habitable, safe home for his people. He is now a planetary hero.",
+                "No-one understands why the Melcheisa Galatic Council is so hell-bent on defending its entirety from outside visitors. It began millennia ago, and they continue to do it, just because it is entrenched in the culture.",
+                "Something falls over in the back rooms of the Outpost somewhere, with a loud crash. Everyone jumps. Even the droids flinch. There are no volunteers to go and investigate it. That could be a good thing or a bad thing.",
+                "The Outpost building has an ancient feel to it. It is also remarkably clean and well preserved, despite the apparent centuries of neglect."
+            ],
+            "Carrie": [
+                "In one of the backrooms of the Outpost building, something falls over with a bang. Carrie hears it and utters a small cry of distress. She doesn't like random events too much.",
+            ],
+            "Fen": [
+                "Fen offers you a cup of herbal tea. You'd rather he focussed on not ingratiating himself to you and to keep on task, as much as he is able.",
+            ],
+        },
+        "daymessage": {
             "one": [
-                "The outpost has come online. The wind outside howls like an old memory. Inside, droids hum and humans try not to shiver. This is day one.",
-                "Lanemu’s final words echo in your mind: 'Darkness first. Then form. Then purpose.' You’re not sure which one you’re in yet.",
+                "The outpost has come online. The wind outside howls like an old memory. Inside, droids are ready for deployment and humans try not to shiver. This is day one.",
+                "Lanemu's final words echo in your mind: 'Darkness first. Then form. Then purpose.' You're not sure which one you're in yet.",
                 "A strange poetry echoes across the comms line: 'For we are no longer seedlings in the soil 🌱 — we are the keepers of our own sky.'",
                 "Chief Engineer Jinekali says that once you've found the seeds, the water and the hydroponics room you can plant crops. That's in case there's not enough food there.",
             ],
@@ -88,9 +118,9 @@ def get_story_message(category, code, **kwargs):
             ],
             "three": [
                 "It's day three and President Axin says that if you don't sort things out soon, he's sending the First Lady — and you REALLY don't want that.",
-                "Jinekali’s daily report has come through. It’s just a single line: 'Stop feeding the droids' He added no punctuation. You feel judged.",
-                "Salvation’s latest transmission contained one bark, two static bursts, and a long sigh. Somehow, it made more sense than the last five status updates combined.",
-                "The wind is louder today. Carrie swears she heard it say her name. Mike hasn’t slept since. Maybe because he's a droid? Or is he that human over there in the corner, cowering?",
+                "Jinekali's daily report has come through. It's just a single line: 'Stop feeding the droids' He added no punctuation. You feel judged.",
+                "Salvation's latest transmission contained one bark, two static bursts, and a long sigh. Somehow, it made more sense than the last five status updates combined.",
+                "The wind is louder today. Carrie swears she heard it say her name. Mike hasn't slept since. Maybe because he's a droid? Or is he that human over there in the corner, cowering?",
             ],
             "four": [
                 "Did somebody say MGC? First Lady Zarasena sends the following: 'Stop eating all the ration packs and start making that blasted shield active!'",
@@ -100,7 +130,7 @@ def get_story_message(category, code, **kwargs):
                 "'Day 5 and we are no closer to establishing a safe outpost' says President Axin Fernea. 'Please make all haste and get it done.",
                 "You can feel First Counsel Anathusa's concern from here. She's usually never wrong. It's day 5. MGC will be inbound in maybe 5 days, and not much more. She's bound to be worried.",
                 "Your 5th day. You could send a human or a droid out onto the planetary surface and explore, but all they'd find would be howling winds and dust. Don't do that.",  
-                "Niobe and Karla have entered something called 'Philosophical Standby Mode'. They’ve been staring at the wall for hours. It’s making everyone else nervous."
+                "Niobe and Karla have entered something called 'Philosophical Standby Mode'. They've been staring at the wall for hours. It's making everyone else nervous."
             ],
             "six": [
                 "Arlyss and Cindlyss, strongly connected to the Aynsefian history as they are, have relayed something profound across the comms line: Manual, Decode, Terminal, Crystals, AncientCode, Connect. You don't know what that means yet. Or maybe you do?",
@@ -121,11 +151,11 @@ def get_story_message(category, code, **kwargs):
                 "MGC signals detected on the far edge of the Melcheisa Galaxy. Stay alert.",
                 "First Lady Zarasena's voice crackles through static: 'The MGC is coming. I know it. Hold the line.'",
                 "IR84U data logs show heightened subspace noise. MGC arrival is now probable.",
-                "Chief Engineer Jinekali’s encoded message arrives: 'Cloak everything. The MGC are most likely scouting.'"
+                "Chief Engineer Jinekali's encoded message arrives: 'Cloak everything. The MGC are most likely scouting.'"
             ],
             "ten": [
                 "Day 10. The final quiet before the storm?",
-                "It's MGC day, otherwise known as day ten. If you’ve enabled the shield, double-check it. If not... pray.",
+                "It's MGC day, otherwise known as day ten. If you've enabled the shield, double-check it. If not... pray.",
                 "The air is heavy with expectation. The MGC are due, if not overdue. It's day ten, Commander.",
                 "President Axin: 'It's day 10. If this message reaches you, Commander, stay hidden. They see more than we thought.'"
             ],
@@ -147,7 +177,7 @@ def get_story_message(category, code, **kwargs):
                 "The wind howls outside the cave entrance. You can even hear it from here today, it's that bad. Is this a sign that day {day} is actually MGC Day?",
                 "Salvation can't save you now, Commander, if you don't have that shield up. Do you? We are not getting diagnostics here in the main city.",
                 "First Counsel Anathusa says that the MGC is unlikely to ask questions before shooting. It is day {day} and she hopes you will keep that in mind.",
-                "A message crackles in over comms. It's Jinekali. You ask who that is. No one answers. The message simply says: 'It's day {day}. Don’t mess up the hydro systems.'"
+                "A message crackles in over comms. It's Jinekali. You ask who that is. No one answers. The message simply says: 'It's day {day}. Don't mess up the hydro systems.'"
             ]
         },
         "endgame": {
@@ -178,33 +208,74 @@ def get_story_message(category, code, **kwargs):
                         "The question is: will the MGC return? Are you willing to bet that they won't? 🧑‍🚀\n\n"
         },
         "orders": {
-            "first_time": "There is a message here at the outpost. Would you like to read it (y/n)? ",
+            "first_time": "There is a message here at the Outpost. Would you like to read it (y/n)? ",
             "chose_not_to": "Okay then. You're going to wing it. I hope you know what you're doing, Commander.",
             "message": [
                 "These orders come directly from your President, Axin Fernea, of the main city of Aynsefian:\n\nWelcome to the Aynsefian Outpost.\n"
                 "Commander, this is the rear entrance to the 500km-plus cave we now call home. The front is already guarded — but this\n"
-                "rear entrance you are at needs protection. The surrounding rock isn’t stable. You’ll have to improvise.\n\n"
-                "Fortunately, there’s an ancient structure here. I've asked Nikse to drop supplies, but don’t assume they’ll be in obvious\n"
-                "places. She did her best with what her scout-class gear could manage. No crew. No support. Just you. We don’t have time\n"
+                "rear entrance you are at needs protection. The surrounding rock isn't stable. You'll have to improvise.\n\n"
+                "Fortunately, there's an ancient structure here. I've asked Nikse to drop supplies, but don't assume they'll be in obvious\n"
+                "places. She did her best with what her scout-class gear could manage. No crew. No support. Just you. We don't have time\n"
                 "to be there to help you. Every other human and droid is needed in the main city. Anathusa believes the MGC could be here\n"
                 "in 10–15 days. The countdown has started.\n\n"     
-                "If they find us, they will kill us. First Lady Zarasena knows — she used to fly with them. She’s my wife. Don’t let her down.\n"
-                "She won’t take kindly to screw-ups. This is a one-way line. We’ll send a single message at the end of each day, drawn from\n"
-                "your diagnostics. That’s all the power we can spare.\n\nYou’re 200 km away. You’re on your own.\n\n"
-                "Chief Engineer Jinekali says you *should* have what you need to get the shield online. We don’t know if it’ll work.\n"
-                "Nobody’s coming to help. Not me, not Jinekali, not even Nikse. This is your station to hold.\n\n"        
+                "If they find us, they will kill us. First Lady Zarasena knows — she used to fly with them. She's my wife. Don't let her down.\n"
+                "She won't take kindly to screw-ups. This is a one-way line. We'll send a single message at the end of each day, drawn from\n"
+                "your diagnostics. That's all the power we can spare.\n\nYou're 200 km away. You're on your own.\n\n"
+                "Chief Engineer Jinekali says you *should* have what you need to get the shield online. We don't know if it'll work.\n"
+                "Nobody's coming to help. Not me, not Jinekali, not even Nikse. This is your station to hold.\n\n"        
                 "Arlyss and Cindlyss send their regards. Salvation might transmit now and then — listen for him. Lanemu says the signs are\n"
-                "unclear. That’s got Zarasena spooked more than anything else.\n\n"
-                "You’ve got four humans and four droids. Each has a name. Each human has a threshold. Resources are scarce. Trust, even scarcer.\n"
+                "unclear. That's got Zarasena spooked more than anything else.\n\n"
+                "You've got four humans and four droids. Each has a name. Each human has a threshold. Resources are scarce. Trust, even scarcer.\n"
                 "Work. Watch. Wait. I believe in you.\n\n"
                 "First Lady Zarasena... 🔥 does not.\n\n"
                 "You may re-read these orders any time by typing `read orders`. Messages and logs will be stored for future access.\n"
                 "Make this work... or we all meet our Creator together."
             ]
         },
+        "recipes": {
+            "message_MealMaker": [
+                "Recipes for the Aynsefian Meal Maker:\n\n",
+                "   1. Smoothie:    add 4 peeled & chopped apples and 1 chopped avocado, add 2 tbsp powdered milk, 2 cups water and desired sugar amount\n"
+                "                   to the MealMaker container. Lock the lid in place and press the 'Smoothie' button.\n\n"
+                "   2. Soup:        add 1 peeled & chopped apple, 1 chopped onion and 2 peeled and diced potatoes, with 2 tbsp stock powder, 3 cups water,\n"
+                "                   desired salt and spices (suggest thyme and oregano, 1 tsp each), to the MealMaker container. Lock the lid in place and\n"
+                "                   press the 'Soup' button.\n\n"
+                "   3. Salad:       add 2 peeled & chopped apples, 1 thinly sliced onion, 1 chopped avocado, 1/2 cup olive oil (or equivalent), plus\n"
+                "                   1 cup cheese (or substitute), 2 tsp mustard powder, 2 tsp honey, to the MealMaker container. Lock the lid in place and\n"
+                "                   press the 'Salad' button.\n\n",
+                "   4. Stir Fry:    add 1 peeled and chopped apple, 1 diced onion and 2 peeled and diced potatoes, along with 1 tsp each of paprika, cumin,\n"
+                "                   chili salt and mustard powder, then 1/2 cup olive oil (or equivalent) to the MealMaker container. Lock the lid in place and\n"
+                "                   press the 'StirFry' button.\n\n"
+                "   CAUTION: Soup and Stir Fry meals will be hot (temperature-wise). All care and no responsibility accepted for any careless acts with these\n"
+                "            meals. Happy eating!\n"
+            ],
+            "message_CampFire": [
+                "Recipes to make next to your Camp Fire, or in it (maybe on it, perhaps):\n\n",
+                "  1| Smashing Smoothie:\n"
+                "      Get out the chopping board and knife. Chop and mash 4 apples, skin off, and 1 avocado, also skin off. Get 2 tsp of\n"
+                "      powdered milk and mix with 2 cups of water in a plastic flask or metal tin, or whatever you have. Add the mashed fruit.\n"
+                "      Add some sugar if you must. Shake vigorously, preferably with the lid on. Stand away from others when consuming.\n\n"
+                "  2| Random Consistency Soup:\n"
+                "      Choose a suitable metallic container with a long handle and place over the fire. Add the following chopped ingredients:\n"
+                "      1 apple (peel and core it first, maybe, if you can), 1 onion (stop cutting if you start crying), 2 potatoes (without peel).\n"
+                "      Add 3 cups of fresh water (or substitute), 2 tsp stock powder, and whatever spices you can find (but don't overdo these).\n"
+                "      Stir at a distance with a long stick or utensil to avoid third degree burns from the fire. Consume before it starts solidifying.\n\n"
+                "  3| Hopeful Salad:\n"
+                "      Not everyone's favourite, but any port in a storm is good. Get these ingredients together: 2 apples, 1 onion, 1 avocado,\n"
+                "      4 tsp of random spices and 2 tbsp of whatever oil you have. You can skip the oil but it'll be really dry if you do. Good luck\n"
+                "      with that. Mix everything together in some sort of plastic container for about 30 seconds and consume. It won't kill you.\n\n"
+                "  4| Caution to the Wind Stir Fry\n"
+                "      This won't be restaurant quality, but it will suffice. Peel, chop, dice, core and slice: 1 apple, 1 onion and 2 potatoes.\n"
+                "      Find a wok, and if you can't, a sheet of corrugated iron will do. Or anything metallic and bigger than a dinner plate.\n"
+                "      Place your cooking surface directly on the fire. Don't burn yourself. Dump your chopped ingredients onto it. Carefully!\n"
+                "      Add 2 tbsp oil and a creative selection of spices. No more that 3 tsp in total, or it will taste horrible.\n"
+                "      Stir and turn over the ingredients frantically for 5 to 10 minutes. Consume. The potatoes might be crunchy. Deal with it.\n\n"
+                "  NOTE: Health insurance is suggested before preparing any of these meals.\n"
+            ],
+        },
         "no_droids": {
             "day_3": "🟡 Jinekali wants to know why the droids aren't online yet.\n'It's kind of crazy brave to man this outpost without them.\nHave you found the Power Supply yet?'",
-            "day_6": "🔴 First Lady Zarasena is getting impatient.\n'Still no droids? You *do* realise they’re the only ones who can decrypt messages, right?\nThe shield, too. Don't be a dumbass. Get those droids workin', man!'"
+            "day_6": "🔴 First Lady Zarasena is getting impatient.\n'Still no droids? You *do* realise they're the only ones who can decrypt messages, right?\nThe shield, too. Don't be a dumbass. Get those droids workin', man!'"
         },
         "quit": {
             "you_win?": "CONGRATULATIONS on defeating the Melcheisa Galactic Council! Will the result be the same if you try again?",

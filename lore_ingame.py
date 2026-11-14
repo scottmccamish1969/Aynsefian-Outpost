@@ -5,7 +5,7 @@ import os
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 
 from constants import CommandOutcome
-from lore.user_interface import msg_help, msg_warn, log_and_display
+from lore.user_interface import msg_help, msg_warn, msg_info, log_and_display
 
 import random
 
@@ -52,6 +52,404 @@ def print_help(gamestate, turns_elapsed):
     log_and_display("", turns_elapsed, stamp=None)
     message = " Type 'help <command>' to get specific help on that command"
     msg_help(message, turns_elapsed)
+
+
+# Messages for the turn renderer functions
+def get_turn_message(category, code, **kwargs):
+    messages = {
+        "assign": {
+            "completed_CP": [
+                "{name} has completed processing {R} red, {I} indigo, and {G} gold crystals via the CrystalProcessor.",
+                "{name} is finished using the CrystalProcessor.",
+            ],
+            "completed_OT": [
+                "{name} has successfully provided the OldTerminal with the required crystal combination of {R} red, {I} indigo, and {G} gold.",
+                "{name} has entered the correct crystal sequence into the OldTerminal: {R} red, {I} indigo, and {G} gold.",
+            ],
+            "completed_SM": [
+                "{name} is no longer assigned to the ShieldManual. Hopefully they learned something.",
+                "{name} has finished working with the ShieldManual. With any luck, the Shield is now more likely to be successfully brought on line.",
+            ],
+            "started_CP": [
+                "{name} will now process {R} red, {I} indigo, and {G} gold crystals via the CrystalProcessor.",
+                "{name} is stationed at the CrystalProcessor, charged with turning {R} red, {I} indigo, and {G} gold crystals into crystal dust.",
+            ],
+            "started_SM": [
+                "{name} has been assigned to the ShieldManual. Let's hope they understand it.",
+                "{name} is sitting down with the ShieldManual, trying to make sense of it.",
+            ],
+        },
+        "charge": {
+            "completed_multiple": [
+                "{names} have completed their charging and are available for tasks.",
+                "{names} are now charged and ready to be utilised.",
+            ],
+            "completed_single": [
+                "{name} is now fully charged.",
+                "{name} is now charged and can do work for a while.",
+            ],
+            "low_power_warning_multiple": [
+                "{names} are low on power and will need to visit the charging station soon.",
+                "Don't let {names} run out of power mid-task - better to charge them now if you can.",
+            ],
+            "low_power_warning_single": [
+                "{name} is low on power and will need a charge soon."
+                "Keep an eye on {name} - their charge is low."
+            ],
+            "interrupt_task": [
+                "{name} has stopped their {task} task because they have sadly run out of power and will need a tow.",
+                "{name} cannot do any more of their {task} task because their power is at zero.",
+            ],
+            "no_power_multiple": [
+                "{names} cannot be charged because the Outpost has run out of power!",
+                "Charging of {names} is not possible because the Outpost has no power! This is fairly serious, Commander.",
+            ],
+            "no_power_single": [
+                "The Outpost is out of power, thus {name} cannot be charged.",
+                "{name} can't be charged as the Outpost has NO power left in the PowerSupply.",
+            ],
+            "started_multiple": [
+                "{names} have commenced charging.",
+                "{names} are at the charging station.",
+            ],
+            "started_single": [
+                "{name} is being charged.",
+                "{name} will be fully charged and ready to go very soon.",
+            ],
+        },
+        "eat": {
+            "completed_multiple": [
+                "{names} have finished eating and are returning to work.",
+                "{names} can now work as they are satiated after eating.",
+            ],
+            "completed_single": [
+                "{name} finished eating and is now working again.",
+                "{name} has had food and is back at work.",
+            ],
+            "deceased": [
+                "Tragically, {name} has died from malnutrition. You hoped this wouldn't happen. Sadly it has. They will need a burial somewhere. R.I.P. {name}. You were one of the good ones.",
+                "{name}'s time on the physical plane has come to an end. Due to lack of food, they have perished. Hearts are heavy all around the Outpost.",
+                "Due to insufficient food, {name} has passed away. Please remember them well, Commander. Succeed for them, if you can."
+            ],
+            "hunger_warning_starving": [
+                "{name} is now starving and needs food in order to continue any tasking.",
+                "{name} cannot work any more due to lack of food and needs to eat something right away."
+            ],
+            "hunger_warning_near_death": [
+                "{name} is near death. Find them some food from somewhere, Commander, if you can. This is serious!",
+                "{name} is approaching death due to lack of food. You MUST find something for them to eat, as soon as possible!"
+            ],
+            "interrupt": [
+                "{name} can no longer {task} because {pronoun_str} starving and need food.",   # {pronoun_str} = "he is" or "she is"
+                "{name} reports that {pronoun_str} starving and can no longer {task}. Food is required, post-haste."
+            ],
+            "last_ration": [
+                "There are no more RationPacks left. All the humans will starve if there is no food currently growing somewhere.",
+                "You have used the last RationPack. Good news, because everyone hates them, and hopefully not bad news, if you have no live food currently growing.",
+            ],
+            "low_food": [
+                "{name} tells you that food supplies are getting low and hopes you have a plan.",
+                "After grabbing some nourishment, {name} warns you that there is not much to eat left in the FoodStore.",
+                "{name} warns you with a worried look that the food is almost gone. Better act soon, Commander, if you haven't already."
+            ],
+            "mature_crop": [
+                "Great news: there are fresh {crop} ready to be harvested.",
+                "If you wish, Commander, you can send someone to collect the newly ripened {crop}."
+            ],
+            "no_more_food": [
+                "Commander, you are out of food. There is nothing left to eat. This is very serious.",
+                "All the food is gone. Hopefully someone has gone to get more from wherever it is growing."
+            ],
+            "started_normal_multiple": [
+                "{names} are having their meal breaks.",
+                "{names} have met in the mess area for a food break.",
+            ],
+            "started_normal_single": [
+                "{name} is taking a break to eat something.",
+                "{name} needs some food and will be back to work soon.",
+            ],
+            "started_urgent_multiple": [
+                "{names} are ravenous and have gone for much needed sustenance.",
+                "{names} needed food badly, and are finally able to eat.",
+            ],
+            "started_urgent_single": [
+                "{name} desperately needed food, having gone to the mess area.",
+                "{name} is starving and has taken a longer meal break as a result.",
+            ],
+        },
+        "examine": {
+            "aborted": [
+                "You decide to have {name} put the examining of the **{item}** on hold for now. Other priorities are greater.",
+                "{name} will leave a more thorough examination of the **{item}** for a later time.",
+            ],
+            "completed_essential": [
+                "{name} finished examining the **{item}** and reports excitedly that it looks like it is {description}",
+                "{name} has had a good look at the **{item}**, earnestly describing that it is {description}",
+            ],
+            "completed_essential_external": [
+                "{name} finished examining the **{item}** and reports excitedly that it looks like it is {description}",
+                "{name} has had a good look at the **{item}**, earnestly describing that it is {description}",
+            ],
+            "completed_essential_fixed": [
+                "{name} finished examining the **{item}** and reports excitedly that it looks like it is {description}",
+                "{name} has had a good look at the **{item}**, earnestly describing that it is {description}",
+            ],
+            "completed_junk": [
+                "{name} finished examining the **{item}**. It is {description}",
+                "{name} examined the **{item}**, which is {description}"
+            ],
+            "completed_junk_external": [
+                "{name} finished examining the **{item}**. It is {description}",
+                "{name} examined the **{item}**, which is {description}"
+            ],
+            "completed_junk_fixed": [
+                "{name} finished examining the **{item}**. It is {description}",
+                "{name} examined the **{item}**, which is {description}"
+            ],
+            "completed_replacement_or_chain": [
+                "{name} finished examining the **{item}**, reporting with some interest that it is {description}",
+                "{name} examined the **{item}**, and brings to your attention that it is {description}"
+            ],
+            "completed_replacement_or_chain_external": [
+                "{name} finished examining the **{item}**, reporting with some interest that it is {description}",
+                "{name} examined the **{item}**, and brings to your attention that it is {description}"
+            ],
+            "completed_replacement_or_chain_fixed": [
+                "{name} finished examining the **{item}**, reporting with some interest that it is {description}",
+                "{name} examined the **{item}**, and brings to your attention that it is {description}"
+            ],
+            "instant": [
+                "{name} has found **{item}** and says that it is {description}",
+                "{name} has returned with **{item}**, which is {description}"
+            ],
+            "instant_external": [
+                "{name} has located, outside of the Outpost building, the **{item}** and says that it is {description}",
+                "{name} has found something external to the Outpost called the **{item}**, which is {description}"
+            ],
+            "instant_fixed": [
+                "{name} has discovered the **{item}** and says that it is {description}",
+                "{name} has located the **{item}**, which is {description}"
+            ],
+            "reassigned": [
+                "{name} is now examining the **{item}** as you consider them better suited than {previous}.",
+                "Instead of {previous}, you have given the task of looking more closely at the **{item}** to {name}."
+            ],
+            "started": [
+                "{name} has started examining the **{item}** closely, hoping for more information.",
+                "{name} has begun looking at the **{item}** in more detail."
+            ]
+        },
+        "explore": {
+            "found_essential": [
+                "{name} found **{item}**",
+                "{name} returned with **{item}**"
+            ],
+            "found_essential_external": [
+                "{name} went outside and located the **{item}**",
+                "{name} has returned from a long search and found the **{item}**"
+            ],
+            "found_essential_fixed": [
+                "{name} located the **{item}**",
+                "{name} has discovered the **{item}**"
+            ],
+            "found_junk": [
+                "{name} found **{item}**",
+                "{name} returned with **{item}**"
+            ],
+            "found_junk_external": [
+                "{name} located, at a distance, something called the **{item}**",
+                "{name} has discovered, outside the Outpost, the **{item}**"
+            ],
+            "found_junk_fixed": [
+                "{name} located, inside the Outpost building, the **{item}**",
+                "{name} has located the **{item}**"
+            ],
+            "found_replacment_or_chain": [
+                "{name} found **{item}**",
+                "{name} returned with **{item}**"
+            ],
+            "found_replacment_or_chain_external": [
+                "{name} found, outside in the cold air, the **{item}**",
+                "{name} has located, a bit remotely to the main Outpost building, the **{item}**"
+            ],
+            "found_replacment_or_chain_fixed": [
+                "{name} seems to have located something called the **{item}**",
+                "{name} returned with news of the **{item}**"
+            ],
+            "nothing_single": [
+                "{name} returned without finding anything useful.",
+                "{name} came back empty-handed. Again.",
+                "{name} found dust, silence, and absolutely nothing of use."
+            ],
+            "nothing_multiple": [
+                "{names} returned without finding anything useful.",
+                "{names} searched thoroughly and achieved very little.",
+                "{names} probably had some sort of smoking break together because they have come back with nothing.",
+            ],
+            "started_multiple": [
+                "{names} have headed out into the Outpost and beyond, searching for useful items.",
+                "{names} have commenced exploring.",
+                "{names} are now looking for anything the Outpost can utilise in a meaningful way.",
+            ],
+            "started_single": [
+                "{name} has bravely ventured forth, looking for anything that might be useful to the Outpost.",
+                "{name} has started exploring.",
+                "{name} is going to try to find an item or items that can be utilised within the Outpost.",
+            ]
+        },
+        "mine": {
+            "completed_multiple": [
+                "{names} have returned from the CrystalField with {R} red, {I} indigo and {G} gold crystals.",
+                "{names} have toiled away and collected the following crystals: {R} red, {I} indigo and {G} gold."
+            ],
+            "completed_single": [
+                "{name} has managed to collect {R} red, {I} indigo and {G} gold crystals for the Outpost.",
+                "{name} has finished mining and brought back these crystals: {R} red, {I} indigo and {G} gold.",
+            ],
+            "started_multiple": [
+                "{names} have commenced mining for precious crystals. What colour(s) might they return with?",
+                "{names} are out chipping away in the CrystalField, bringing back important resources for the Outpost.",
+            ],
+            "started_single": [
+                "{name} is mining for essential crystals to sustain the Outpost.",
+                "{name} has commenced mining for the as many crystals as possible.",
+            ],
+        },
+        "plant": {
+            "completed": [
+                "{name} has now planted {crop_message}.",
+                "{name} has returned from planting {crop_message}.",
+            ],
+            "started": [
+                "{name} will go ahead and plant {crop_message}.",
+                "{name} is going to attempt to grow {crop_message}.",
+            ],
+        },
+        "reap": {
+            "completed_multiple": [
+                "{names} have returned from the food area with {food_collection}.",
+                "{names} have collectively brought back the following fresh food: {food_collection}."
+            ],
+            "completed_single": [
+                "{name} happily brings back {food_collection} from the food growing area.",
+                "{name} has collected {food_collection} for general consumption by the humans in the Outpost team.",
+            ],
+            "started_multiple": [
+                "{names} are headed to the food growing area to collect fresh produce.",
+                "{names} have been sent to collect whatever is ripe and edible.",
+            ],
+            "started_single": [
+                "{name} has gone to bring back some fresh food. Everyone else is excited. Even the droids.",
+                "{name} will be busy for a bit harvesting fresh produce.",
+            ],
+        },
+        "refuel": {
+            "completed_multiple": [
+                "{names} have now refueled the PowerSupply with {total_power} units.",
+                "{names} have collectively finished refuelling the PowerSupply, adding {total_power} units of power to the system.",
+            ],
+            "completed_single": [
+                "{name} has finished refueling the PowerSupply with {total_power} units.",
+                "{name} refueled the PowerSupply, boosting it by {total_power} units of power.",
+            ],
+            "started_multiple": [
+                "{names} will now refuel the PowerSupply with crystal dust, utilising {R} red, {I} indigo and {G} gold crystal vials, and generating {total_power} units of power.",
+                "{names} will collectively add {total_power} units of power to the PowerSupply by refuelling using {R} red, {I} indigo and {G} gold crystal vials.",
+            ],
+            "started_single": [
+                "{name} is refueling the PowerSupply with {R} red, {I} indigo and {G} gold crystal vials, generating {total_power} units of power.",
+                "{name} will be boosting the PowerSupply by adding {total_power} units of power using {R} red, {I} indigo and {G} gold crystal vials.",
+            ],
+        },
+        "shield": {
+            "active": [
+                "With the final piece now in place, you can see a line of green lights at the base of the Shield. {name} pats you on the back. Congratulations, Commander, you have successfully led your team to acheive their mission. All that remains now is to wait and see if it protects you against the MGC. Well done!",
+                "{name} glances at the OldTerminal and gives a shout: 'It's active! The screen says it's active!' You can scarcely believe it. You got it done, Commander! You achieved your mission and can now report back to Aynsefian HQ with the news.",
+                "You give a wink to {name} as you both stare at the word 'ACTIVE' on the OldTerminal screen. You never thought you'd see the day. All that searching, planting, mining, and consuming ration packs, and you've done it. Amazing. Now it's a waiting game, to see if the MGC can detect you or not.",
+            ],
+            "ancient_code_found": [
+                "The all important AncientCode message has been found and thankfully {name} has the required Firmware that matches it. This could be significant.",
+                "The AncientCode that has just been found matches the configuration of {name} and only them. This is an imporant discovery in the context of getting the Shield activated.",
+                "You knew that {name} would be your most critical droid. You just knew it. They have the required code that will allow them to properly interface with the Shield."
+            ],
+            "assigned": [
+                "The air grows still. All sounds cease. The Outpost crew collectively hold their breath as they watch {name} roll gently into place, connected to the CloakingShield. The Outpost has now set up protection for the last vulnerable cave entrance and might have saved Aynsefian. Time will tell.",
+                "You always knew, Commander, that {name} had a special quality to them. A droid unlike any other. The CloakingShield is now fully operational and the Outpost is theoretically protected from any outside intrusions by the MGC. Aynsefian may have been saved. You must wait and see if this ultimately works.",
+                "A gentle breeze wafts through the Outpost. {name} connects itself to the CloakingShield activation port. The Outpost crew utters a gasp or two between them. This might be the moment that your prime mission succeeds. With any luck, the MGC will now not detect anything once they arrive. And they will.",
+            ],
+            "cannot_assign_human": [
+                "{name} attempts to turn on the CloakingShield. Nothing happens when all buttons are pressed. Maybe the connection port here is designed for a droid?",
+                "As {name} approaches the CloakingShield, they realise that the activation port is the enablement point via a connection from one of the droids.",
+                "The Outpost crew watch as {name} tries to activate the CloakingShield. Button presses achieve nothing. {name} says that perhaps a droid is required to connect to the activation port on the front of the Shield.",
+            ],
+            "code_not_found": [
+                "All within the Outpost stop and watch as {name} connects to the CloakingShield. But there is a problem. The on-screen message says 'Error 901: Droid code not found in system; cannot activate.'",
+                "The team waits with great anticipation as the CloakingShield responds to {name}'s connection. However, sadly, the little screen on the Shield flashes 'Error 767b: Droid activation code invalid.'",
+                "The Outpost crew watch with much excitement as {name} attempts to activate the CloakingShield. The tiny green screen on the Shield reads 'Error 6g3: Activation code not found.'",
+            ],
+            "combo_correct": [
+                "{name} has entered the correct combination of crystals that the Shield needs. Will it work now? You hope so.",
+                "At the OldTerminal, {name} has now entered a combination of crystals that satisfies the needed configuration. Not time to celebrate yet, but this is a significant step.",
+                "{name} puts in the CrystalCombination at the OldTerminal. There is no error. This might mean it has been accepted."
+            ],
+            "combo_found": [
+                "You now have a specific combination of crystals, printed on a plastic card: {R} red, {I} indigo and {G} gold. You're not sure what this means yet.",
+                "Apparently {R} red, {I} indigo and {G} gold crystals are needed for something. You are not sure what, at this stage.",
+                "The CrystalCombination card specifies {R} red, {I} indigo and {G} gold crystals. For what, you have no idea."
+            ],
+            "combo_not_examined": [
+                "The OldTerminal is asking for three values for the crystals to be entered and placed in the receptacle next to the shield. {name} doesn't know what those values should be.",
+                "The CloakingShield terminal is now active, but it is asking for three crystal values to be entered. {name} doesn't know what those values are. Nobody does.",
+                "{name} works through the setup of the terminal, and enters a guess for the crystal amounts, as nobody knows what they should be. The terminal responds with 'Error 9a5: Crystal combination not recognised.'",
+            ],
+            "not_enough_crystals": [
+                "{name} reports that the OldTerminal is asking for {R} red, {I} indigo and {G} gold crystals, but there are not enough of them in the Outpost at this point in time.",
+                "The OldTerminal is now active and readable. It says that {R} red, {I} indigo and {G} gold crystals are required, but {name} says that these amounts don't exist in the Outpost.",
+                "{name} says that the OldTerminal is asking for {R} red, {I} indigo and {G} gold crystals, but there are not enough of them in the Outpost.",
+            ],
+            "terminal_cannot_assign_human": [
+                "{name} tries to type on the keyboard of the OldTerminal, but it doesn't respond. It might be broken. What if one of the droids connected to it via Port A1 on the side of the Terminal?",
+                "This OldTerminal was clearly not designed for humans. It doesn't respond to {name} tapping on the keyboard. You suspect a droid might be needed instead.",
+                "{name} is getting nothing from using the keyboard, and wonders if it is broken. Perhaps a droid can connect to the OldTerminal via the port on the side, and see if they can make it work."
+            ],
+            "terminal_unreadable": [
+                "The OldTerminal responds to {name}'s connection, but the screen is unreadable. No-one, not even the droids, can understand the symbols being displayed on it.",
+                "The OldTerminal is now lit up, but the screen is filled with strange symbols that no-one can read. {name} says that perhaps the terminal is broken.",
+                "{name} turns on the OldTerminal. The screen is now active, but the symbols on it are completely incomprehensible.",
+            ],
+        },
+        "tow": {
+            "completed": [
+                "{droid_towed} has been successfully towed to the charging station by {name}.",
+                "{name} has brought {droid_towed} back into service at the charging station.",
+            ],
+            "no_idle_humans_single": [
+                "There are no idle humans available to tow {droid_towed} to the charging station.",
+                "{droid_towed} is out of charge and cannot be towed to the charging station because there are no idle humans.",
+            ],
+            "no_idle_humans_multiple": [
+                "There are no idle humans available to tow {droids_towed} to the charging station.",
+                "{droids_towed} are out of charge and cannot be towed to the charging station because there are no idle humans.",
+            ],
+            "started": [
+                "{name} has rescued {droid_towed} and is taking them to the charging station.",
+                "Poor old {droid_towed} was out of charge, but {name} has collected them and will bring them back into service.",
+            ],
+        },
+    }
+
+    options = messages.get(category, {}).get(code)
+
+    if not options:
+        return ""
+
+    if isinstance(options, list):
+        template = random.choice(options)
+    else:
+        template = options
+
+    return template.format(**kwargs)
+
 
 # All of the In Game messages
 def get_message(category, code, **kwargs):
@@ -207,13 +605,8 @@ def get_message(category, code, **kwargs):
         },
         "feed": {
             "commenced": "{person_name} has gladly begun the task of finding and eating some food. {pronoun} will be back in {turn_msg}.",
-            "fed_A_C_P": "With all fresh food available, {person_name} had {meal_type} {A} apples, {P} potato, and {C} of a cabbage. {pronoun1} seems less vague than {pronoun2} was the day before. 🌱",
-            "fed_A_C": "{person_name} had {meal_type} {A} apples and {C} of a cabbage. It wasn’t tasty, but it did the job. 🥬",
-            "fed_A_P": "{person_name} ate {meal_type} {A} crispy apples and {P} earthy potatoes. Raw food isn't ideal, but it's better than that ration pack rubbish. 💸",
-            "fed_C_P": "Today {person_name} had {meal_type} {P} potatoes and {C} of a cabbage. Some fruit would've been nice, but this will do. 🥬",
-            "fed_A": "With only fruit available, {person_name} had {meal_type} {A} apples. Grow some more crops please, Commander. 🍏",
-            "fed_C": "Cabbages are the only thing left. {person_name} had {meal_type} {C} of them. Still better than a ration pack. 😟",
-            "fed_P": "It's the starch diet for {person_name}. {pronoun1} just had {meal_type} {P} potatoes today. Pray for them. 🥔",
+            "fed_fresh": "With all fresh food available, {person_name} had {meal_type} {food_served}. {pronoun1} seems less vague than {pronoun2} was the day before. 🌱",
+            "fed_partial_fresh": "The Outpost is missing a full compliment of food, so {person_name} had {meal_type} {food_served}.",
             "fed_a_meal": "{person_name} had some food and feels much better for it. Now {pronoun2} can get back on task: do whatever it takes to get the shield up.",
             "fed_ration": [
                 "{person_name} had a ration pack. It tasted like expired glue and regret. {pronoun1} was not grateful for what {pronoun2} was given. Grace was not said. 🍫",
@@ -283,6 +676,7 @@ def get_message(category, code, **kwargs):
         "plant": {
             "aborted": "You have decided that {target} has more important things to do than plant. {pronoun} {is_are} dismayed at this decision. {pronoun}'ll get over it.",
             "bed_occupied": "Cannot plant anything in bed {bed}. It is already being used.",
+            "cant_reserve": "The planting plan could not be reserved. Please check available seeds and beds.",
             "commenced": "{target} has vanished into the planting area for {turn_msg} with a packet of seeds and not much else. Hoping for the best is all you can do at this stage.",
             "crop_matured": "🌱 {planter}'s {crop_type} crop in bed #{bed} has matured!",
             "crop_started": "{target} has somehow managed to plant fast growing {crop}s. Use the 'list food' command to view expected yield time(s).",
@@ -292,11 +686,14 @@ def get_message(category, code, **kwargs):
             "no_beds": "There are no free beds in which to plant crops. Planting has failed!",
             "no_hydro": "The HydroponicsRoom remains inaccessible. You'll need to find it before planting can begin. 💧",
             "no_seedstash": "You haven't located the SeedStash yet. Without seeds, there's nothing to plant. 🔍",
-            "not_enough_seeds": "You do not have enough seeds to plant more {crop}s. You have {have} {crop} seeds and you need {need} {crop} seeds.",
-            "not_enough_seeds_generic": "You do not have enough seeds to plant a standard crop of apple, cabbage and potato. Try a specific seed type.",
+            "not_enough_seeds": "You do not have enough seeds to plant a {crop} crop. You have {have} {crop} seeds and you need {need} {crop} seeds.",
+            "not_enough_seeds_left_choose_another": "No {crop} seeds remain available for another bed. Choose another crop, or enter 0 to cancel planting.",
+            "not_enough_seeds_generic": "You do not have enough seeds to plant a standard crop. Try a specific seed type.",
             "nothing_planted": "DEVELOPER NOTE: Nothing was planted due to bed allocation issues. Worker name: {target}.",
+            "partial_crop": "{name} will plant a partial {crop} crop using the remaining {seeds_to_plant} seeds.",
+            "seeds_not_returned": "DEVELOPER: No planting data found in the queued task. Cannot return seeds to the SeedStash or un-reserve planting beds.",
             "task_complete": "The planting task by {target} has now been completed. Successful crops planted: {number}.",
-            "unknown_crop": "Unknown crop type '{crop}'. Try apple, cabbage, or potato.",
+            "unknown_crop": "Unknown crop type '{crop}'. This sort of food is not grown at the Outpost.",
         },
         "queue": {
             "added": "{character} is currently {current_task}, so the task of {queue_task} has been added to {pronoun} queue.",
